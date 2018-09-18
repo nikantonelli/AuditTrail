@@ -6,7 +6,13 @@ Ext.define('AuditApp', {
         {
             xtype: 'container',
             itemId: 'hdrBox',
-            height: '100px'
+            height: '100px',
+            items: [{
+                xtype: 'rallyartifactsearchcombobox',
+                storeConfig: {
+                    models: ['userstory', 'defect']
+                }
+            }]
         },
         {
             xtype: 'container',
@@ -32,12 +38,12 @@ Ext.define('AuditApp', {
             {
                 label: 'US1 Story',
                 markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                value: Ext.Date.add(new Date(), Ext.Date.DAY, 1)
+                value: Ext.Date.add(new Date(), Ext.Date.MONTH, 1)
             },
             {
                 label: 'US1 Story',
                 markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                value: Ext.Date.add(new Date(), Ext.Date.DAY, 2)
+                value: Ext.Date.add(new Date(), Ext.Date.MONTH, 2)
             }
             // {
             //     label: 'Name',
