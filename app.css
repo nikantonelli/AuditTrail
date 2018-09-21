@@ -4,11 +4,28 @@
 
 /* If we want a box but want to fade in and out, use opacity not visibility */
 .boundingBox {
-    opacity: 0.2;
-    fill : red
+    opacity: 0.1;
+    fill : black
 }
 
 .elastic {
-    stroke-width: 2;
+    stroke-width: 1;
+}
+
+.line {
     stroke: blue;
+}
+
+.point {
+    stroke: red;
+    fill: yellow;
+}
+
+.event {
+    fill: purple;
+}
+
+.change {
+    stroke: palegreen;
+    fill: green;
 }

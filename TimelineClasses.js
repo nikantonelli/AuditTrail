@@ -13,5 +13,8 @@ timelinetick.TYPE = {
 class timelinemarker {}
 
 timelinemarker.TYPE = {
-    UNKNOWN_EVENT: Symbol()
+    UNKNOWN_EVENT: Symbol(),
+    SIZE_CHANGE: Symbol(),
+    ITEM_CREATION: Symbol(),
+    ITEM_DELETION: Symbol()
 };

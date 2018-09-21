@@ -7,7 +7,7 @@
 
     <script type="text/javascript">
         Rally.onReady(function () {
-                class timelinetick {};
+                class timelinetick {}
 
 timelinetick.TYPE = {
     MS: Symbol(),
@@ -19,26 +19,36 @@ timelinetick.TYPE = {
     MONTH: Symbol()
 };
 
-class timelinemarker {};
+class timelinemarker {}
 
 timelinemarker.TYPE = {
-    UNKNOWN_EVENT: Symbol()
+    UNKNOWN_EVENT: Symbol(),
+    SIZE_CHANGE: Symbol(),
+    ITEM_CREATION: Symbol(),
+    ITEM_DELETION: Symbol()
 };
                 Ext.define('AuditApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
     layout: 'auto',
+
+    itemId: 'AuditApp',
+
+    config: {
+        defaultSettings:{
+            enablePIs: true,
+            enableStories: true,
+            enableTasks: false,
+            enableDefects: true,
+            enableTestCases: false
+        }
+    },
+
     items: [
         {
             xtype: 'container',
             itemId: 'hdrBox',
-            height: '100px',
-            items: [{
-                xtype: 'rallyartifactsearchcombobox',
-                storeConfig: {
-                    models: ['userstory', 'defect']
-                }
-            }]
+            height: '100px'
         },
         {
             xtype: 'container',
@@ -47,59 +57,89 @@ timelinemarker.TYPE = {
             },
             id: 'svg',
             listeners: {
-                afterrender: function() {  gApp = this.up('rallyapp'); gApp._onElementValid(this);}
+                afterrender: function() {  var gApp = this.up('rallyapp'); gApp._onElementValid(this);}
             }
         }
     ],
 
     _onElementValid : function(surface) {
         this._setSVGSize(surface);
+    },
 
+    getSettingsFields: function() {
+
+        return [
+            {
+                xtype: 'rallycheckboxfield',
+                fieldLabel: 'Allow selection of Portfolio Items',
+                name: 'enablePIs',
+                labelAlign: 'top'
+            },{
+                xtype: 'rallycheckboxfield',
+                fieldLabel: 'Allow selection of Stories',
+                name: 'enableStories',
+                labelAlign: 'top'
+            },
+            {
+                xtype: 'rallycheckboxfield',
+                fieldLabel: 'Allow selection of Defects',
+                name: 'enableDefects',
+                labelAlign: 'top'
+            },
+            {
+                xtype: 'rallycheckboxfield',
+                fieldLabel: 'Allow selection of Tasks',
+                name: 'enableTasks',
+                labelAlign: 'top'
+            },
+            {
+                xtype: 'rallycheckboxfield',
+                fieldLabel: 'Allow selection of TestCases',
+                name: 'enableTestcases',
+                labelAlign: 'top'
+            }
+        ];
+    },
+
+    _newData: function() {
+
+        //Parse the records into timeline data
+        this.loadMask.hide();
         var data = [
             {
                 label: 'US1 Story',
                 markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                value: new Date()
+                timestamp: new Date()
+            },
+            {
+                label: 'US1 Story',
+                markerType: timelinemarker.TYPE.SIZE_CHANGE,
+                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -1)
+            },
+            {
+                label: 'US1 Story',
+                markerType: timelinemarker.TYPE.SIZE_CHANGE,
+                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2)
+            },
+            {
+                label: 'US1 Story',
+                markerType: timelinemarker.TYPE.SIZE_CHANGE,
+                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2.5)
+            },
+            {
+                label: 'US1 Story',
+                markerType: timelinemarker.TYPE.SIZE_CHANGE,
+                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -3)
             },
             {
                 label: 'US1 Story',
                 markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                value: Ext.Date.add(new Date(), Ext.Date.DAY, 1)
-            },
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                value: Ext.Date.add(new Date(), Ext.Date.DAY, 2)
+                timestamp: Ext.Date.add(new Date(), Ext.Date.MONTH, -1)
             }
-            // {
-            //     label: 'Name',
-            //     data: [{
-            //         type: TimelineChart.TYPE.POINT,
-            //         at: new Date([2015, 1, 11])
-            //     }, {
-            //         type: TimelineChart.TYPE.POINT,
-            //         at: new Date([2015, 1, 15])
-            //     }, {
-            //         type: TimelineChart.TYPE.POINT,
-            //         at: new Date([2015, 3, 10])
-            //     }, {
-            //         label: 'I\'m a label',
-            //         type: TimelineChart.TYPE.INTERVAL,
-            //         from: new Date([2015, 2, 1]),
-            //         to: new Date([2015, 3, 1])
-            //     }, {
-            //         type: TimelineChart.TYPE.POINT,
-            //         at: new Date([2015, 6, 1])
-            //     }, {
-            //         type: TimelineChart.TYPE.POINT,
-            //         at: new Date([2015, 7, 1]),
-            //         customClass: 'custom-class'
-            //     }]
-            // }
         ];
 
         Ext.create('timeline', {
-            parent: surface,
+            parent: this.down('#svg'),
             barWidth: 100,
             barLength: this.getEl().getWidth(),
             tickType: timelinetick.TYPE.DAY,
@@ -108,14 +148,125 @@ timelinemarker.TYPE = {
     },
 
     //Set the SVG area to the surface we have provided
-    _setSVGSize: function(surface) {
+    _setSVGSize: function() {
         var svg = Ext.getElementById('svg');
         svg.setAttribute('width', this.getEl().dom.offsetWidth);
         //We are going to bung in a totally arbitrary height which the user can scroll down
         svg.setAttribute('height', 200);
     },
 
+    _recordChosen: function(source, record) {
+        //Get the LBAPI data for the item and then pass to parser
+        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release'];
+        var fieldsToHydrate = [
+            'ScheduleState', 
+            '_PreviousValues.ScheduleState', 
+            'State', 
+            '_PreviousValues.State', 
+            
+        ];
+        var neededFields = [
+            'FormattedID', 
+            'Name',
+            '_ValidFrom', 
+            '_ValidTo',
+            '_User'
+        ];
+        var find = {
+            "ObjectID": record.get('ObjectID'),
+        };
+
+        //Add previous values fetches
+        _.each(fieldsOfInterest, function (field) { neededFields.push('_PreviousValues.' + field);});
+        //Add the fields themselves
+        neededFields = neededFields.concat(fieldsOfInterest);
+
+        var kb_store = Ext.create('Rally.data.lookback.SnapshotStore',{
+            findConfig: find,
+            fetch: neededFields,
+            hydrate: fieldsToHydrate,
+            removeUnauthorizedSnapshots: true,
+            limit: 'Infinity'
+        });
+ 
+        kb_store.load({
+             scope: this,
+             callback: this._newData
+        });
+        
+    },
+
+    onSettingsUpdate: function() {
+        var types = [];
+
+        if (this.getSetting('enablePIs')) {
+            _.each(this.typeStore.getRecords(), function(record) { types.push (record.data.TypePath.toLowerCase());});
+        }
+        if (this.getSetting('enableStories')) {
+            types.push('userstory');
+        }
+        if (this.getSetting('enableDefects')) {
+            types.push('defect');
+        }
+        if (this.getSetting('enableTasks')) {
+            types.push('task');
+        }
+        if (this.getSetting('enableTestCases')) {
+            types.push('testcase');
+        }
+
+        if (types.length === 0) {
+            types.push('userstory');    //Always have at least one.
+        }
+        this.types = types;
+},
+
     launch: function() {
+        var me = this;
+        me.loadMask = new Ext.LoadMask(this, { msg: 'Loading data....'});
+        me.loadMask.hide();
+
+        this.addListener('newData', this._recordChosen);
+
+        //Get a database of the portfolio item types
+        Ext.create('Rally.ui.combobox.PortfolioItemTypeComboBox',{
+            itemId: 'typeStore',
+            storeConfig: {
+                listeners: {
+                    load: function(store) {
+                        me.typeStore = store;
+                        //Make a list of artefact types that we support and pass to the chooser
+                        me.onSettingsUpdate();
+                        me._makeChooser(me.types);
+                        me.down('#hdrBox').add({
+                            margin: '10 10 10 10',
+                            xtype: 'rallybutton',
+                            text: 'Choose Item',
+                            handler: function () {
+                                me._makeChooser(me.types);
+                            }
+                        });
+                    },
+                    scope: me
+                }
+            }
+        });
+    },
+
+    _makeChooser: function(types) {
+        var me = this;
+        Ext.create('Rally.ui.dialog.ArtifactChooserDialog', {
+            artifactTypes: types,
+            autoShow: true,
+            height: 500,
+            listeners: {
+                artifactchosen: function(dialog, selectedRecord){
+                    me.fireEvent( 'newData', this, selectedRecord );
+                    me.loadMask.show();
+                },
+                scope: this
+            }
+         });
     }
 });
 
@@ -133,20 +284,29 @@ timelinemarker.TYPE = {
         barLength: 600,
         tickInterval: 1,
         tickType: timelinetick.TYPE.DAY,
-        minTickSpacing: 20, //Fewest number of SVG pixels between ticks.  
+        minTickSpacing: 5, //Fewest number of SVG pixels between ticks.  
         enableXAxis: true     //Boolean as to whether to do the axes here  
     },
 
     constructor: function(config) {
-        config = Ext.applyIf(Ext.clone(config), this.defaultConfig)
+//        me = this;
+        config = Ext.applyIf(Ext.clone(config), this.defaultConfig);
         this.callParent(arguments);
-        timeline = d3.select(config.parent.id);
-        this.surface = timeline.append('rect')
+    },
+    
+    initComponent: function() {
+    
+        this.timeline = d3.select(this.parent.id);
+        this.leftEnd = this.minTickSpacing; //Bring in half a large circle size from the end so that we don't clip the first item
+        this.rightEnd = this.barLength-(this.minTickSpacing + 30);  //As above, but also leave 30 for reset icon
+
+        this.surface = this.timeline.append('rect')
             .attr('width', this.barLength)
             .attr('height', this.barWidth)
             .attr('class', 'boundingBox');
 
-        this.defs = timeline.append('defs')
+        //TODO: Check whether we need a clipPath as the box is already a viewport
+        this.defs = this.timeline.append('defs')
             .append('clipPath')
             .attr('id', 'barContent')
             .append('rect')
@@ -155,60 +315,151 @@ timelinemarker.TYPE = {
             .attr('width', this.barLength)
             .attr('height', this.barWidth);
 
-        timeline.call(d3.zoom().on('zoom', this.zoomed));
+        //Keep this global so we can access the current state of zoom
+        this.zoom = d3.zoom();
+        //Capture the zoom events and update the timeline
+        var me = this;
+        this.surface.call(this.zoom.on('zoom', function() { me.zoomed();}));
 
+        //Capture the scroll events and update the timeline
+        //TODO: timeline.select('.boundingBox').on('scroll', this.scrolled);
+
+        //Get the max min for the initial range
+        //Then set the initial scaling factor
+        this.scale = d3.scaleTime()
+            .domain(d3.extent(this.data, function(d) { return d.timestamp; }))
+            .range([this.leftEnd, this.rightEnd]);
+
+        this._setUpGeom(this.data);
+
+        this.force = d3.forceSimulation(this.data)
+            .force("x", d3.forceX(function(d) { 
+                return me.scale(d.timestamp); 
+            }).strength(0.1))
+//            .force("y", d3.forceY(this.barWidth * 0.75).strength(0.05))
+            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))
+            .stop();
+//            .on("tick", function() { me._ticked(me);});
+        for ( var i = 0; i < 150; i++) { this.force.tick();}
+
+        //We may want the option of a zoomable area with no dates shown.
         if (this.enableXAxis) {
-            //Get the max min for the range
-            var minDate = d3.min(this.data, function(d) { return d.value;});
-            var maxDate = d3.max(this.data, function(d) { return d.value;});
-
-            scale = d3.scaleTime()
-                .domain([minDate, maxDate])
-                .range([20, this.barLength - 20]);
-
-            xAxis = d3.axisBottom(scale);
-            timeline.append('g')
-                .attr("transform", "translate(0," + this.barWidth + ")")
-                .call(xAxis);
+            this.xAxis = d3.axisBottom(this.scale);
+            this.timeline.append('g')
+                .attr('class', 'x axis')
+                .call(this.xAxis)
+                .call( function(x) { x.width = this.barWidth; x.length = this.barLength;});
         }
-        if (this.data.length) {
-            //Add point
-            var points = timeline.selectAll('.event')
-                .data(this.data)
-                .enter();
-                
-            points.call(this._setUpGeom, this);
 
-            //The position is going to be rubber banded to the baseline point
-            points.append('line')
-                .attr('x1', function(d) { return d.position.x;})
-                .attr('y1', function(d) { return d.position.y;})
-                .attr('x2', function(d) { return d.baseline.x;})
-                .attr('y2', function(d) { return d.baseline.y;})
-                .attr("class", 'elasticLine');
+        //Add point
+        var events = this.timeline.selectAll('.event')
+            .data(this.data)
+            .enter()
+            .append("g")
+            .attr("class", "event");
+            
+        var points = events.selectAll('.point')
+            .data(this.data)
+            .enter()
+            .append("g")
+            .attr('class', 'elastic point');
 
-            points.append('circle')
-                .attr('cx', function(d) { return d.position.x;})
-                .attr('cy', function(d) { return d.position.y;})
-                .attr('r', 5);
+        //The position is going to be rubber banded to the baseline point
+        points.append('line')
+            .attr('x1', function(d) { return d.x;})
+            .attr('y1', function(d) { return d.y;})
+            .attr('x2', function(d) { return d.baseline.x;})
+            .attr('y2', function(d) { return d.baseline.y;})
+            .attr("class", 'elastic line');
 
-        }
+            
+        points.append('circle')
+            .attr('cx', function(d) { return d.x;})
+            .attr('cy', function(d) { return d.y;})
+            .attr('r', this.minTickSpacing)
+            .attr('class', function(d) {
+                var clsStr = 'elastic';
+                switch (d.markerType) {
+                    case timelinemarker.TYPE.UNKNOWN_EVENT:
+                        clsStr += ' point';
+                        break;
+                    case timelinemarker.TYPE.SIZE_CHANGE:
+                    clsStr += ' change';
+                    break;
+                }
+                return clsStr; 
+            });
+
+//        debugger;
+        me.lines = me.timeline.selectAll('.elastic.line');
+        me.ends = me.timeline.selectAll('.elastic.point');
+        
     },
 
-    _setUpGeom: function(points, app) {
-        points.each( function(d) {
-            d.baseline = { x: app.scale(d.value), y: app.barWidth};
-            d.position = { x: app.scale(d.value), y: app.barWidth/2};
+    _ticked: function(me) {
+        me.lines             
+            .attr('x1', function(d) { 
+                return d.x;
+            })
+            .attr('y1', function(d) { return d.y;});
+            // .attr('x2', function(d) { return d.baseline.x;})
+            // .attr('y2', function(d) { return d.baseline.y;});
+        me.ends
+            .attr('cx', function(d) { return d.x;})
+            .attr('cy', function(d) { return d.y;});
+    },
+
+    setBarlength: function(pixelLength) {
+        this.barLength = pixelLength;
+        this.scale.range([-(this.barLength/2)+this.barOffset, (this.barLength/2)+this.barOffset]);
+    },
+
+    _redrawTimeline: function() {
+        if (this.enableXAxis) {
+            var axis = this.timeline.select('.x.axis');
+            axis.call(this.xAxis);
+        }
+
+        //Now shift all points of the lines to where they need to be
+        this.timeline.selectAll('.elastic.line').transition()
+            .duration (750)
+            .attr('x1', function(d) { return d.x;})
+            .attr('y1', function(d) { return d.y;})
+            .attr('x2', function(d) { return this.scale(d.timestamp);})
+            .attr('y2', function() { return 0;});
+
+        this.force.restart(); //Quick way to get the circles to move.
+    },
+
+    _setUpGeom: function(points) {
+        var me = this;
+        _.each(points, function(d) {
+            d.position = {x: me.scale(d.timestamp), y: me.barWidth/2};
+            d.baseline = { x: me.scale(d.timestamp), y: 0}; //Where the line is on the axis
+            d.x = d.position.x;
+            d.y = d.position.y;
         });
     },
 
     zoomed: function() {
-        timeline.select('.x.axis').call(xAxis);
-        debugger;
+
+        var percent = (d3.event.sourceEvent.offsetX/this.barLength);
+        if (d3.event.sourceEvent.type === 'wheel') {
+            this.leftEnd +=  d3.event.sourceEvent.wheelDeltaX - (percent * d3.event.sourceEvent.wheelDeltaY); 
+            this.rightEnd +=  d3.event.sourceEvent.wheelDeltaX + ((1-percent) * d3.event.sourceEvent.wheelDeltaY); 
+        } else if (d3.event.sourceEvent.type === 'mousemove'){
+            this.leftEnd +=  d3.event.sourceEvent.movementX - (percent * d3.event.sourceEvent.movementY); 
+            this.rightEnd +=  d3.event.sourceEvent.movementX + ((1 - percent) * d3.event.sourceEvent.movementY); 
+        } else {
+            console.log('Oops!');
+        }
+        //Then zoom out using the scale and redraw technique
+        this.scale.range([this.leftEnd , this.rightEnd]);
+        //Redraw after all calcs
+        this._redrawTimeline();
     }
-//        this.timeline = new TimelineChart(timeline, config.data, {});
-  })
-});
+  });
+}());
                 // https://d3js.org Version 4.4.1. Copyright 2017 Mike Bostock.
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -16621,12 +16872,25 @@ Object.defineProperty(exports, '__esModule', { value: true });
 }
 /* If we want a box but want to fade in and out, use opacity not visibility */
 .boundingBox {
-  opacity: 0.2;
-  fill: #ff0000;
+  opacity: 0.1;
+  fill: #000000;
 }
-.elasticLine {
-  stroke-width: 2;
+.elastic {
+  stroke-width: 1;
+}
+.line {
   stroke: blue;
+}
+.point {
+  stroke: red;
+  fill: yellow;
+}
+.event {
+  fill: purple;
+}
+.change {
+  stroke: palegreen;
+  fill: green;
 }
 
     </style>
