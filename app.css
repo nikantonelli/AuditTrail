@@ -1,11 +1,12 @@
-.app {
-     /* Add app styles here */
+/* If we want a box but want to fade in and out, use opacity not visibility */
+.eventBox {
+    opacity: 0.05;
+    fill : black
 }
 
-/* If we want a box but want to fade in and out, use opacity not visibility */
-.boundingBox {
-    opacity: 0.1;
-    fill : black
+.histogramBox {
+    opacity: 0.05;
+    fill : blue
 }
 
 .elastic {
@@ -13,12 +14,14 @@
 }
 
 .line {
-    stroke: blue;
+    stroke: rgb(198, 198, 204);
+    z-index: 15000;
 }
 
 .point {
     stroke: red;
     fill: yellow;
+    z-index: 16000;
 }
 
 .event {

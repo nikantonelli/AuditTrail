@@ -7,7 +7,8 @@
         "TimelineClasses.js",
         "App.js",
         "Timeline.js",
-        "d3.js"
+        "d3.js",
+        "AuditCard.js"
     ],
     "css": [
         "app.css"

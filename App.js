@@ -30,6 +30,10 @@ Ext.define('AuditApp', {
             listeners: {
                 afterrender: function() {  var gApp = this.up('rallyapp'); gApp._onElementValid(this);}
             }
+        },
+        {
+            xtype: 'container',
+            itemId: 'modList'
         }
     ],
 
@@ -72,50 +76,72 @@ Ext.define('AuditApp', {
         ];
     },
 
-    _newData: function() {
+    _newData: function(records) {
 
+        var me = this;
         //Parse the records into timeline data
         this.loadMask.hide();
         var data = [
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                timestamp: new Date()
-            },
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.SIZE_CHANGE,
-                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -1)
-            },
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.SIZE_CHANGE,
-                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2)
-            },
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.SIZE_CHANGE,
-                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2.5)
-            },
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.SIZE_CHANGE,
-                timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -3)
-            },
-            {
-                label: 'US1 Story',
-                markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-                timestamp: Ext.Date.add(new Date(), Ext.Date.MONTH, -1)
-            }
+            // {
+            //     label: 'US1 Story',
+            //     markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
+            //     timestamp: new Date()
+            // },
+            // {
+            //     label: 'US1 Story',
+            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
+            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -1)
+            // },
+            // {
+            //     label: 'US1 Story',
+            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
+            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2)
+            // },
+            // {
+            //     label: 'US1 Story',
+            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
+            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2.5)
+            // },
+            // {
+            //     label: 'US1 Story',
+            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
+            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -3)
+            // },
+            // {
+            //     label: 'US1 Story',
+            //     markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
+            //     timestamp: Ext.Date.add(new Date(), Ext.Date.MONTH, -1)
+            // }
         ];
 
-        Ext.create('timeline', {
-            parent: this.down('#svg'),
-            barWidth: 100,
-            barLength: this.getEl().getWidth(),
-            tickType: timelinetick.TYPE.DAY,
-            data: data
+        _.each(records, function(record) {
+            var duration = new Date(record.get('_ValidTo')) - new Date(record.get('_ValidFrom'));
+            data.push( {
+                label: record.get('FormattedID'),
+                markerType: me._parseType(record),
+                timeStamp: new Date(record.get('_ValidFrom')),
+                timeDuration: duration > (10 * 1000 * 60 * 60 * 24 * 365)? 1: duration,  //<10 years
+                record: record
+            });
         });
+
+        if (data.length >1) {
+            Ext.create('timeline', {
+                parent: this.down('#svg'),
+                barWidth: 100,
+                barLength: this.getEl().getWidth(),
+                data: data
+            });
+        }
+        else {
+            Rally.ui.notify.Notifier.showWarning( {
+                msg: 'Insufficient history to show timeline'
+            })
+        }
+    },
+
+    _parseType: function() {
+        return timelinemarker.TYPE.SIZE_CHANGE;
     },
 
     //Set the SVG area to the surface we have provided
@@ -123,17 +149,18 @@ Ext.define('AuditApp', {
         var svg = Ext.getElementById('svg');
         svg.setAttribute('width', this.getEl().dom.offsetWidth);
         //We are going to bung in a totally arbitrary height which the user can scroll down
-        svg.setAttribute('height', 200);
+        svg.setAttribute('height', 300);
     },
 
     _recordChosen: function(source, record) {
-        //Get the LBAPI data for the item and then pass to parser
-        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release'];
+        //Get the LBAPI data for the item and then pass to parser. Can use blocked and ready for card colouring in timeline.js
+        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready'];
         var fieldsToHydrate = [
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
             'State', 
             '_PreviousValues.State', 
+            '_User'
             
         ];
         var neededFields = [
@@ -230,6 +257,9 @@ Ext.define('AuditApp', {
             artifactTypes: types,
             autoShow: true,
             height: 500,
+            storeConfig: {
+                context: me.getContext().getDataContext(),
+            },
             listeners: {
                 artifactchosen: function(dialog, selectedRecord){
                     me.fireEvent( 'newData', this, selectedRecord );

@@ -10,8 +10,8 @@
         margin: '10 20 20 10',
         barWidth: 60,
         barLength: 600,
-        tickInterval: 1,
-        tickType: timelinetick.TYPE.DAY,
+        tickInterval: 50,   //For histogram bar width
+        tickType: Ext.Date.DAY,
         minTickSpacing: 5, //Fewest number of SVG pixels between ticks.  
         enableXAxis: true     //Boolean as to whether to do the axes here  
     },
@@ -19,22 +19,39 @@
     constructor: function(config) {
 //        me = this;
         config = Ext.applyIf(Ext.clone(config), this.defaultConfig);
+        // this.plugins = [
+        //     {ptype: 'rallycardcontentleft'},
+        //     {ptype: 'rallycardcontentright'}
+        // ];
+        // delete this.config.plugins;
+
         this.callParent(arguments);
     },
     
     initComponent: function() {
     
+        var me = this;
         this.timeline = d3.select(this.parent.id);
         this.leftEnd = this.minTickSpacing; //Bring in half a large circle size from the end so that we don't clip the first item
         this.rightEnd = this.barLength-(this.minTickSpacing + 30);  //As above, but also leave 30 for reset icon
 
-        this.surface = this.timeline.append('rect')
+        this.histogramPane = this.timeline.append("g")
+            .append('rect')
             .attr('width', this.barLength)
             .attr('height', this.barWidth)
-            .attr('class', 'boundingBox');
+            .attr('class', 'histogramBox');
+
+        this.surface = this.timeline.append('g')
+            .attr('transform', 'translate(0,' + this.barWidth + ')');
+
+        //Background colouring
+        this.surface.append('rect')
+            .attr('width', this.barLength)
+            .attr('height', this.barWidth)
+            .attr('class', 'eventBox');
 
         //TODO: Check whether we need a clipPath as the box is already a viewport
-        this.defs = this.timeline.append('defs')
+        this.defs = this.surface.append('defs')
             .append('clipPath')
             .attr('id', 'barContent')
             .append('rect')
@@ -45,27 +62,33 @@
 
         //Keep this global so we can access the current state of zoom
         this.zoom = d3.zoom();
+
         //Capture the zoom events and update the timeline
-        var me = this;
         this.surface.call(this.zoom.on('zoom', function() { me.zoomed();}));
 
-        //Capture the scroll events and update the timeline
-        //TODO: timeline.select('.boundingBox').on('scroll', this.scrolled);
-
         //Get the max min for the initial range
+        var minDate = d3.min(this.data, function(d) { return d.timeStamp;});
+        var maxDate = d3.max(this.data, function(d) { return d.timeStamp;});
         //Then set the initial scaling factor
         this.scale = d3.scaleTime()
-            .domain(d3.extent(this.data, function(d) { return d.timestamp; }))
+            .domain([ Ext.Date.add( minDate, me.tickType, -1), Ext.Date.add( maxDate, me.tickType, 1)])
             .range([this.leftEnd, this.rightEnd]);
 
         this._setUpGeom(this.data);
 
+        this.histogram = d3.histogram()
+            .domain([ Ext.Date.add( minDate, me.tickType, -1), Ext.Date.add( maxDate, me.tickType, 1)])
+            .value( function(d) { return d.timeStamp;});
+
+            debugger;
+        var bins = this.histogram(this.data);
         this.force = d3.forceSimulation(this.data)
             .force("x", d3.forceX(function(d) { 
-                return me.scale(d.timestamp); 
+                return me.scale(d.timeStamp); 
             }).strength(0.1))
-//            .force("y", d3.forceY(this.barWidth * 0.75).strength(0.05))
-            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))
+            .force("y1", d3.forceY(this.barWidth/2).strength(0.1))
+            .force("y2", d3.forceY(0).strength(-0.05))
+            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing))
             .stop();
 //            .on("tick", function() { me._ticked(me);});
         for ( var i = 0; i < 150; i++) { this.force.tick();}
@@ -73,38 +96,39 @@
         //We may want the option of a zoomable area with no dates shown.
         if (this.enableXAxis) {
             this.xAxis = d3.axisBottom(this.scale);
-            this.timeline.append('g')
+            this.surface.append('g')
                 .attr('class', 'x axis')
                 .call(this.xAxis)
                 .call( function(x) { x.width = this.barWidth; x.length = this.barLength;});
         }
 
         //Add point
-        var events = this.timeline.selectAll('.event')
+        var events = this.surface.selectAll('.event')
             .data(this.data)
             .enter()
             .append("g")
-            .attr("class", "event");
+            .attr("class", "event")
+            .attr('id', function(d) { return 'event' + d.index;})
+            .append('line')
+            .attr('x1', function(d) { return d.x;})
+            .attr('y1', function(d) { return d.y;})
+            .attr('x2', function(d) { return d.baseline.x;})
+            .attr('y2', function(d) { return d.baseline.y;})
+            .attr("class", 'elastic line');
             
-        var points = events.selectAll('.point')
+        var points = this.surface.selectAll('.point')
             .data(this.data)
             .enter()
             .append("g")
             .attr('class', 'elastic point');
 
         //The position is going to be rubber banded to the baseline point
-        points.append('line')
-            .attr('x1', function(d) { return d.x;})
-            .attr('y1', function(d) { return d.y;})
-            .attr('x2', function(d) { return d.baseline.x;})
-            .attr('y2', function(d) { return d.baseline.y;})
-            .attr("class", 'elastic line');
-
             
         points.append('circle')
             .attr('cx', function(d) { return d.x;})
             .attr('cy', function(d) { return d.y;})
             .attr('r', this.minTickSpacing)
+            .attr('id', function(d) { return 'point' + d.index;})
             .attr('class', function(d) {
                 var clsStr = 'elastic';
                 switch (d.markerType) {
@@ -116,7 +140,9 @@
                     break;
                 }
                 return clsStr; 
-            });
+            })
+            .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx]);})            
+            .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx]);});
 
 //        debugger;
         me.lines = me.timeline.selectAll('.elastic.line');
@@ -124,6 +150,45 @@
         
     },
 
+    _mouseOut: function(node, item){
+        if (node.card) node.card.hide();
+    },
+
+    _mouseOver: function(node,item) {
+        if (!(node.record)) {
+            //Only exists on real items, so do something for the 'unknown' item
+            return;
+        } else {
+
+            //For th audit variant, we want to do a check of all the lookback changes associated with this item and do checks
+            if ( !node.card) {
+                var cardSize = 200;
+                var card = Ext.create('AuditCard', {
+                    'record': node.record,
+                    constrain: false,
+                    width: cardSize,
+                    height: 'auto',
+                    floating: true, //Allows us to control via the 'show' event
+                    shadow: false,
+                    showAge: true,
+                    resizable: true,
+                    listeners: {
+                        show: function(card){
+                            //Move card to one side, preferably closer to the centre of the screen. TODO
+                            var xpos = node.x;
+                            var ypos = node.y;
+                            card.el.setLeftTop( (xpos - cardSize) < 0 ? xpos + cardSize : 
+                                    ((xpos + cardSize) > (this.getSize().width) ? xpos - cardSize: xpos)
+                                    , 
+                                (ypos + card.getSize().height)> this.getSize().height ? ypos - (card.getSize().height+20) : ypos);
+                        }
+                    }
+                });
+                node.card = card;
+            }
+            node.card.show();
+        }
+    }, 
     _ticked: function(me) {
         me.lines             
             .attr('x1', function(d) { 
@@ -143,17 +208,18 @@
     },
 
     _redrawTimeline: function() {
+        var me = this;
         if (this.enableXAxis) {
-            var axis = this.timeline.select('.x.axis');
+            var axis = this.surface.select('.x.axis');
             axis.call(this.xAxis);
         }
 
         //Now shift all points of the lines to where they need to be
-        this.timeline.selectAll('.elastic.line').transition()
+        this.surface.selectAll('.elastic.line').transition()
             .duration (750)
             .attr('x1', function(d) { return d.x;})
             .attr('y1', function(d) { return d.y;})
-            .attr('x2', function(d) { return this.scale(d.timestamp);})
+            .attr('x2', function(d) { return me.scale(d.timeStamp);})
             .attr('y2', function() { return 0;});
 
         this.force.restart(); //Quick way to get the circles to move.
@@ -162,8 +228,8 @@
     _setUpGeom: function(points) {
         var me = this;
         _.each(points, function(d) {
-            d.position = {x: me.scale(d.timestamp), y: me.barWidth/2};
-            d.baseline = { x: me.scale(d.timestamp), y: 0}; //Where the line is on the axis
+            d.position = {x: me.scale(d.timeStamp), y: me.barWidth/2};
+            d.baseline = { x: me.scale(d.timeStamp), y: 0}; //Where the line is on the axis
             d.x = d.position.x;
             d.y = d.position.y;
         });
