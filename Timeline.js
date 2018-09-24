@@ -28,6 +28,12 @@
         this.callParent(arguments);
     },
     
+    destroy: function () {
+        this.surface.remove();
+        this.histogramPane.remove();
+        this.callParent(arguments);
+    },
+    
     initComponent: function() {
     
         var me = this;

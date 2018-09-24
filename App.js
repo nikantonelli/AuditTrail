@@ -79,6 +79,9 @@ Ext.define('AuditApp', {
     _newData: function(records) {
 
         var me = this;
+
+        if (me.timeline) { me.timeline.destroy(); }
+
         //Parse the records into timeline data
         this.loadMask.hide();
         var data = [ ];
@@ -95,7 +98,7 @@ Ext.define('AuditApp', {
         });
 
         if (data.length >1) {
-            Ext.create('timeline', {
+            me.timeline = Ext.create('timeline', {
                 parent: this.down('#svg'),
                 barWidth: 300,
                 barLength: this.getEl().getWidth(),
