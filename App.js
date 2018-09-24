@@ -81,38 +81,7 @@ Ext.define('AuditApp', {
         var me = this;
         //Parse the records into timeline data
         this.loadMask.hide();
-        var data = [
-            // {
-            //     label: 'US1 Story',
-            //     markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-            //     timestamp: new Date()
-            // },
-            // {
-            //     label: 'US1 Story',
-            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
-            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -1)
-            // },
-            // {
-            //     label: 'US1 Story',
-            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
-            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2)
-            // },
-            // {
-            //     label: 'US1 Story',
-            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
-            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -2.5)
-            // },
-            // {
-            //     label: 'US1 Story',
-            //     markerType: timelinemarker.TYPE.SIZE_CHANGE,
-            //     timestamp: Ext.Date.add(new Date(), Ext.Date.HOUR, -3)
-            // },
-            // {
-            //     label: 'US1 Story',
-            //     markerType: timelinemarker.TYPE.UNKNOWN_EVENT,
-            //     timestamp: Ext.Date.add(new Date(), Ext.Date.MONTH, -1)
-            // }
-        ];
+        var data = [ ];
 
         _.each(records, function(record) {
             var duration = new Date(record.get('_ValidTo')) - new Date(record.get('_ValidFrom'));
@@ -128,7 +97,7 @@ Ext.define('AuditApp', {
         if (data.length >1) {
             Ext.create('timeline', {
                 parent: this.down('#svg'),
-                barWidth: 100,
+                barWidth: 300,
                 barLength: this.getEl().getWidth(),
                 data: data
             });
@@ -149,7 +118,7 @@ Ext.define('AuditApp', {
         var svg = Ext.getElementById('svg');
         svg.setAttribute('width', this.getEl().dom.offsetWidth);
         //We are going to bung in a totally arbitrary height which the user can scroll down
-        svg.setAttribute('height', 300);
+        svg.setAttribute('height', 1200);
     },
 
     _recordChosen: function(source, record) {

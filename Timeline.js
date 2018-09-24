@@ -8,7 +8,7 @@
 
     defaultConfig: {
         margin: '10 20 20 10',
-        barWidth: 60,
+        barWidth: 400,
         barLength: 600,
         tickInterval: 50,   //For histogram bar width
         tickType: Ext.Date.DAY,
@@ -33,16 +33,16 @@
         var me = this;
         this.timeline = d3.select(this.parent.id);
         this.leftEnd = this.minTickSpacing; //Bring in half a large circle size from the end so that we don't clip the first item
-        this.rightEnd = this.barLength-(this.minTickSpacing + 30);  //As above, but also leave 30 for reset icon
+        this.rightEnd = this.barLength-this.minTickSpacing; 
 
         this.histogramPane = this.timeline.append("g")
             .append('rect')
             .attr('width', this.barLength)
-            .attr('height', this.barWidth)
+            .attr('height', 100)    //Histogram is always this size
             .attr('class', 'histogramBox');
 
         this.surface = this.timeline.append('g')
-            .attr('transform', 'translate(0,' + this.barWidth + ')');
+            .attr('transform', 'translate(0,' + 100 + ')');
 
         //Background colouring
         this.surface.append('rect')
@@ -80,22 +80,28 @@
             .domain([ Ext.Date.add( minDate, me.tickType, -1), Ext.Date.add( maxDate, me.tickType, 1)])
             .value( function(d) { return d.timeStamp;});
 
-            debugger;
+
         var bins = this.histogram(this.data);
         this.force = d3.forceSimulation(this.data)
             .force("x", d3.forceX(function(d) { 
                 return me.scale(d.timeStamp); 
             }).strength(0.1))
             .force("y1", d3.forceY(this.barWidth/2).strength(0.1))
-            .force("y2", d3.forceY(0).strength(-0.05))
-            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing))
+            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))    //Stop overlapping dots
             .stop();
-//            .on("tick", function() { me._ticked(me);});
-        for ( var i = 0; i < 150; i++) { this.force.tick();}
+        
+        //Do one now to set the initial positions
+        for ( var i = 0; i<150; i++) this.force.tick();
+        _.each(this.data, function(datum) {
+            datum.dotTime = me.scale.invert(datum.x);
+        });
+
+        //Now we have the dot positions, mark them in the time domain
 
         //We may want the option of a zoomable area with no dates shown.
         if (this.enableXAxis) {
-            this.xAxis = d3.axisBottom(this.scale);
+            this.xAxis = d3.axisBottom(this.scale)
+                .ticks(10, "%Y %b %d %I:%M");
             this.surface.append('g')
                 .attr('class', 'x axis')
                 .call(this.xAxis)
@@ -119,8 +125,7 @@
         var points = this.surface.selectAll('.point')
             .data(this.data)
             .enter()
-            .append("g")
-            .attr('class', 'elastic point');
+            .append("g");
 
         //The position is going to be rubber banded to the baseline point
             
@@ -133,7 +138,7 @@
                 var clsStr = 'elastic';
                 switch (d.markerType) {
                     case timelinemarker.TYPE.UNKNOWN_EVENT:
-                        clsStr += ' point';
+                        clsStr += ' unknown';
                         break;
                     case timelinemarker.TYPE.SIZE_CHANGE:
                     clsStr += ' change';
@@ -144,7 +149,7 @@
             .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx]);})            
             .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx]);});
 
-//        debugger;
+
         me.lines = me.timeline.selectAll('.elastic.line');
         me.ends = me.timeline.selectAll('.elastic.point');
         
@@ -189,23 +194,6 @@
             node.card.show();
         }
     }, 
-    _ticked: function(me) {
-        me.lines             
-            .attr('x1', function(d) { 
-                return d.x;
-            })
-            .attr('y1', function(d) { return d.y;});
-            // .attr('x2', function(d) { return d.baseline.x;})
-            // .attr('y2', function(d) { return d.baseline.y;});
-        me.ends
-            .attr('cx', function(d) { return d.x;})
-            .attr('cy', function(d) { return d.y;});
-    },
-
-    setBarlength: function(pixelLength) {
-        this.barLength = pixelLength;
-        this.scale.range([-(this.barLength/2)+this.barOffset, (this.barLength/2)+this.barOffset]);
-    },
 
     _redrawTimeline: function() {
         var me = this;
@@ -215,14 +203,13 @@
         }
 
         //Now shift all points of the lines to where they need to be
-        this.surface.selectAll('.elastic.line').transition()
-            .duration (750)
-            .attr('x1', function(d) { return d.x;})
-            .attr('y1', function(d) { return d.y;})
+        this.surface.selectAll('.elastic')
+            .attr('x1', function(d) { 
+                return me.scale(d.dotTime);})
             .attr('x2', function(d) { return me.scale(d.timeStamp);})
-            .attr('y2', function() { return 0;});
+            .attr('cx', function(d) { 
+                return me.scale(d.dotTime);})
 
-        this.force.restart(); //Quick way to get the circles to move.
     },
 
     _setUpGeom: function(points) {
@@ -239,16 +226,17 @@
 
         var percent = (d3.event.sourceEvent.offsetX/this.barLength);
         if (d3.event.sourceEvent.type === 'wheel') {
-            this.leftEnd +=  d3.event.sourceEvent.wheelDeltaX - (percent * d3.event.sourceEvent.wheelDeltaY); 
-            this.rightEnd +=  d3.event.sourceEvent.wheelDeltaX + ((1-percent) * d3.event.sourceEvent.wheelDeltaY); 
+            this.leftEnd +=  (d3.event.sourceEvent.wheelDeltaX - (percent * d3.event.sourceEvent.wheelDeltaY))/2; 
+            this.rightEnd +=  (d3.event.sourceEvent.wheelDeltaX + ((1-percent) * d3.event.sourceEvent.wheelDeltaY))/2; 
         } else if (d3.event.sourceEvent.type === 'mousemove'){
             this.leftEnd +=  d3.event.sourceEvent.movementX - (percent * d3.event.sourceEvent.movementY); 
-            this.rightEnd +=  d3.event.sourceEvent.movementX + ((1 - percent) * d3.event.sourceEvent.movementY); 
+            this.right +=  d3.event.sourceEvent.movementX + ((1 - percent) * d3.event.sourceEvent.movementY); 
         } else {
             console.log('Oops!');
         }
         //Then zoom out using the scale and redraw technique
         this.scale.range([this.leftEnd , this.rightEnd]);
+
         //Redraw after all calcs
         this._redrawTimeline();
     }
