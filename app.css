@@ -1,21 +1,21 @@
 /* If we want a box but want to fade in and out, use opacity not visibility */
-.eventBox {
+.eventbox {
     opacity: 0.05;
     fill : black
 }
 
-.histogramBox {
+.histogrambox {
     opacity: 0.05;
     fill : blue
 }
 
 .elastic {
-    stroke-width: 1;
+    stroke-width: 2;
+    stroke: white;
 }
 
 .line {
     stroke: rgb(198, 198, 204);
-    z-index: 15000;
 }
 
 .point {
@@ -29,10 +29,59 @@
 }
 
 .change {
-    stroke: palegreen;
     fill: green;
 }
 
 .unknown {
     fill: black;
+}
+
+.creation {
+    fill: yellow;
+}
+.mouse:pseudo-class {
+    enableCard: true
+}
+
+.dragndrop {
+    fill: cyan;
+}
+
+.delete {
+    fill: red;
+}
+.warning {
+    stroke: orange;
+    stroke-width: 4;
+}
+
+.cardleftcol {
+    border: 1px grey;
+    border-style: none solid none none;
+    text-align: center;
+}
+.cardmiddlecol {
+    border: 1px grey;
+    border-style: none solid none solid;
+    text-align: center;
+}
+.cardrightcol {
+    border: 1px grey;
+    border-style: none none none solid;
+    text-align: center;
+}
+.cardlefthdr {
+    border: 1px grey;
+    border-style: none solid solid none;
+    text-align: center;
+}
+.cardmiddlehdr {
+    border: 1px grey;
+    border-style: none solid solid solid;
+    text-align: center;
+}
+.cardrighthdr {
+    border: 1px grey;
+    border-style: none none solid solid;
+    text-align: center;
 }

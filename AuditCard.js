@@ -1,14 +1,15 @@
 Ext.define('AuditCard', {
     extend: 'Ext.Component',
     cls: 'rui-card',
-    items: [
-        {
-            xtype: 'container',
-            itemId: 'cardbox',
-            width: 400,
-            height: 400
-        }
-    ],
+    width: 800,
+    // items: [
+    //     {
+    //         xtype: 'container',
+    //         itemId: 'cardbox',
+    //         width: 800,
+//            height: 400
+//        }
+//   ],
 
     config: {
         defaultConfig: {
@@ -29,7 +30,41 @@ Ext.define('AuditCard', {
         var data = {
             Owner: '/user/' + this.record.get('_User'),
         }
-        return Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data);
+        return '<td>' + Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data) + '</td>';
+    },
+
+    _getChangeHtml: function() {
+        var me = this;
+        var html = '';
+
+        /* TODO: What conditions can the lookback api create:
+            1. item creation
+            2. fields setting
+            3. field update
+            4. deletion???
+        */
+        if ( this.record.raw._PreviousValues ) {
+            var k = Object.keys(this.record.raw._PreviousValues);
+
+            if (k.length > 0) {
+                html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>'
+            }
+            _.each(k, function(key) {
+                //If the hydrate has given us an object, we needs its name
+                var oname = me.record.get('_PreviousValues.' + key);
+                var nname = me.record.get(key);
+                if (oname.hasOwnProperty('Name')) oname = oname.Name;
+                if (nname.hasOwnProperty('Name')) nname = nname.Name;
+
+                html += '<td class="cardleftcol">' + key + '</td>'
+                html += '<td class="cardmiddlecol">' + oname + '</td>'
+                html += '<td class="cardrightcol">' + nname + '</td>'
+            })
+        }
+        else {
+            //TODO Columns without previousvalues
+        }
+        return html + '</tr><tr>';
     },
 
     _buildHtml: function () {
@@ -47,15 +82,14 @@ Ext.define('AuditCard', {
         }
 
         html.push(Ext.DomHelper.createHtml(artifactColorDiv));
-        html.push('<div class="card-table-ct"><table class="card-table"><tr>');
-
+        html.push('<div class="card-table-ct"><table style="width:' + this.width + 'px" class="card-table"><tr>');
         html.push(this._getUserHtml());
+        html.push('<td>' + this.record.get('FormattedID') + '</td><td>' + 
+            Ext.Date.format(new Date(this.record.get('_ValidFrom')), 'Y-M-d H:i') + '</td>');
+        html.push('</tr><tr>')
+        html.push(this._getChangeHtml());
 
         html.push('</tr></table>');
-
-        if (this.iconsPlugin) {
-            html.push(this.iconsPlugin.getHtml());
-        }
 
         html.push('</div>');
 

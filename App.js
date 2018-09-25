@@ -97,6 +97,27 @@ Ext.define('AuditApp', {
             });
         });
 
+        //Check the last record to see if the date extends beyond today. If not, then it was deleted permanently
+        //TODO
+
+        var deletedDate = new Date(records[0].get("_ValidTo"));
+        _.each(records, function(record) {
+            var d = new Date(record.get("_ValidTo"));
+            if (d > deletedDate) {
+                deletedDate = d;
+            }
+        });
+        //We had changes that don't continue beyond today, so it must have been deleted
+        if ( deletedDate < new Date()) {
+            data.push( {
+                label: record.get('FormattedID'),
+                markerType: timelinemarker.TYPE.ITEM_DELETION,
+                timeStamp: deletedDate,
+                timeDuration: duration > (10 * 1000 * 60 * 60 * 24 * 365)? 1: duration,  //<10 years
+                record: record
+            });
+        }
+
         if (data.length >1) {
             me.timeline = Ext.create('timeline', {
                 parent: this.down('#svg'),
@@ -107,14 +128,93 @@ Ext.define('AuditApp', {
         }
         else {
             Rally.ui.notify.Notifier.showWarning( {
-                msg: 'Insufficient history to show timeline'
+                message: 'Insufficient history to show timeline'
             })
         }
     },
 
-    _parseType: function() {
-        return timelinemarker.TYPE.SIZE_CHANGE;
+    _parseType: function(record) {
+
+        if ( record.raw._SnapshotType === 'CREATE') {
+            return timelinemarker.TYPE.ITEM_CREATION;
+        }
+        else if ( record.raw._SnapshotType === 'DELETE') {
+            return timelinemarker.TYPE.ITEM_DELETION;
+        }
+        else if ( record.raw._SnapshotType === 'RESTORE') {
+            return timelinemarker.TYPE.ITEM_RESTORE;
+        }
+
+         var common = this._parseCommon(record);
+         if (common) return common;
+
+        //If we are here, we are most likely UPDATE
+        record.raw._TypeHierarchy.reverse();
+        if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
+            return this._parsePI(record);
+        }
+
+        switch (record.raw._TypeHierarchy[0]) {
+            case  'HierarchicalRequirement': {
+                return this._parseStory(record);
+            }
+            case  'Defect': {
+                return this._parseDefect(record);
+            }
+            case  'Defect': {
+                return this._parseTask(record);
+            }
+        }
+        return timelinemarker.TYPE.UNKNOWN;
+
     },
+
+    _parseStory: function(record) {
+        var checkVar = [
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.SIZE_CHANGE },
+        ];
+        var retval = null;
+
+        _.each(checkVar, function( check) {
+            if ( checkVar = (record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field))){
+                if (checkVar !== record.get(check.field)){
+                    retval = check.type;
+                }
+            }    
+        });
+
+        //Do other type specific checks here
+        return retval;
+    },
+
+    _parseCommon: function(record) {
+        console.log(record);
+        var checkVar = [
+            { field: 'DragAndDropRank', type: timelinemarker.TYPE.DRAGNDROP_CHANGE },
+            { field: 'Owner', type: timelinemarker.TYPE.OWNER_CHANGE },
+            { field: 'Project', type: timelinemarker.TYPE.PROJECT_CHANGE },
+        ];
+        var retval = null;
+
+        _.each(checkVar, function( check) {
+            if ( checkVar = (record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field))){
+                if (checkVar !== record.get(check.field)){
+                    retval = check.type;
+                }
+            }    
+        });
+
+        return retval;
+    },
+
+    _parseDefect: function(record) {
+        return timelinemarker.TYPE.UNKNOWN_EVENT;
+    },
+
+    _parsePI: function(record) {
+        return timelinemarker.TYPE.UNKNOWN_EVENT;
+    },
+
 
     //Set the SVG area to the surface we have provided
     _setSVGSize: function() {
@@ -126,13 +226,18 @@ Ext.define('AuditApp', {
 
     _recordChosen: function(source, record) {
         //Get the LBAPI data for the item and then pass to parser. Can use blocked and ready for card colouring in timeline.js
-        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready'];
+        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready', 'PlanEstimate', 'DragAndDropRank', 'Project', 'Owner'];
         var fieldsToHydrate = [
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
             'State', 
             '_PreviousValues.State', 
-            '_User'
+            'Project', 
+            '_PreviousValues.Project', 
+            'Owner', 
+            '_PreviousValues.Owner', 
+            '_User',
+            '_TypeHierarchy'
             
         ];
         var neededFields = [
@@ -140,7 +245,9 @@ Ext.define('AuditApp', {
             'Name',
             '_ValidFrom', 
             '_ValidTo',
-            '_User'
+            '_User',
+            '_SnapshotType',
+            '_TypeHierarchy'
         ];
         var find = {
             "ObjectID": record.get('ObjectID'),
@@ -153,7 +260,9 @@ Ext.define('AuditApp', {
 
         var kb_store = Ext.create('Rally.data.lookback.SnapshotStore',{
             findConfig: find,
+            compress: true,
             fetch: neededFields,
+//            fetch: true,
             hydrate: fieldsToHydrate,
             removeUnauthorizedSnapshots: true,
             limit: 'Infinity'
@@ -225,6 +334,8 @@ Ext.define('AuditApp', {
 
     _makeChooser: function(types) {
         var me = this;
+
+        //Problem: This chooser will only get existing artifacts, not stuff that has been deleted.        
         Ext.create('Rally.ui.dialog.ArtifactChooserDialog', {
             artifactTypes: types,
             autoShow: true,

@@ -12,7 +12,7 @@
         barLength: 600,
         tickInterval: 50,   //For histogram bar width
         tickType: Ext.Date.DAY,
-        minTickSpacing: 5, //Fewest number of SVG pixels between ticks.  
+        minTickSpacing: 10, //Fewest number of SVG pixels between ticks.  
         enableXAxis: true     //Boolean as to whether to do the axes here  
     },
 
@@ -45,7 +45,7 @@
             .append('rect')
             .attr('width', this.barLength)
             .attr('height', 100)    //Histogram is always this size
-            .attr('class', 'histogramBox');
+            .attr('class', 'histogrambox');
 
         this.surface = this.timeline.append('g')
             .attr('transform', 'translate(0,' + 100 + ')');
@@ -54,7 +54,7 @@
         this.surface.append('rect')
             .attr('width', this.barLength)
             .attr('height', this.barWidth)
-            .attr('class', 'eventBox');
+            .attr('class', 'eventbox');
 
         //TODO: Check whether we need a clipPath as the box is already a viewport
         this.defs = this.surface.append('defs')
@@ -144,14 +144,33 @@
                 var clsStr = 'elastic';
                 switch (d.markerType) {
                     case timelinemarker.TYPE.UNKNOWN_EVENT:
-                        clsStr += ' unknown';
+                        clsStr += ' unknown mouse';
+                        break;
+                    case timelinemarker.TYPE.ITEM_CREATION:
+                        clsStr += ' creation';
+                        break;
+                    case timelinemarker.TYPE.ITEM_DELETION:
+                        clsStr += ' delete mouse';
+                        break;
+                    case timelinemarker.TYPE.ITEM_RESTORE:
+                        clsStr += ' creation mouse';
                         break;
                     case timelinemarker.TYPE.SIZE_CHANGE:
-                    clsStr += ' change';
-                    break;
+                        clsStr += ' change mouse';
+                        break;
+                    case timelinemarker.TYPE.DRAGNDROP_CHANGE:
+                        clsStr += ' change mouse';
+                        break;
+                    case timelinemarker.TYPE.OWNER_CHANGE:
+                        clsStr += ' change mouse';
+                        break;
+                    case timelinemarker.TYPE.PROJECT_CHANGE:
+                        clsStr += ' change warning mouse';
+                        break;
                 }
                 return clsStr; 
-            })
+            });
+        points.selectAll('.mouse')
             .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx]);})            
             .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx]);});
 
@@ -173,7 +192,7 @@
 
             //For th audit variant, we want to do a check of all the lookback changes associated with this item and do checks
             if ( !node.card) {
-                var cardSize = 200;
+                var cardSize = 400;
                 var card = Ext.create('AuditCard', {
                     'record': node.record,
                     constrain: false,
@@ -186,6 +205,7 @@
                     listeners: {
                         show: function(card){
                             //Move card to one side, preferably closer to the centre of the screen. TODO
+                            debugger;
                             var xpos = node.x;
                             var ypos = node.y;
                             card.el.setLeftTop( (xpos - cardSize) < 0 ? xpos + cardSize : 
