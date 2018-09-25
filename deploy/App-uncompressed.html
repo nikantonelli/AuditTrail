@@ -7,25 +7,17 @@
 
     <script type="text/javascript">
         Rally.onReady(function () {
-                class timelinetick {}
-
-// timelinetick.TYPE = {
-//     MS: Symbol(),
-//     SEC: Symbol(),
-//     MIN: Symbol(),
-//     HOUR: Symbol(),
-//     DAY: Symbol(),
-//     WEEK: Symbol(),
-//     MONTH: Symbol()
-// };
-
-class timelinemarker {}
+                class timelinemarker {}
 
 timelinemarker.TYPE = {
     UNKNOWN_EVENT: Symbol(),
-    SIZE_CHANGE: Symbol(),
     ITEM_CREATION: Symbol(),
-    ITEM_DELETION: Symbol()
+    ITEM_DELETION: Symbol(),
+    ITEM_RESTORE: Symbol(),
+    DRAGNDROP_CHANGE: Symbol(),
+    SIZE_CHANGE: Symbol(),
+    OWNER_CHANGE: Symbol(),
+    PROJECT_CHANGE: Symbol()
 };
                 Ext.define('AuditApp', {
     extend: 'Rally.app.App',
@@ -108,6 +100,9 @@ timelinemarker.TYPE = {
     _newData: function(records) {
 
         var me = this;
+
+        if (me.timeline) { me.timeline.destroy(); }
+
         //Parse the records into timeline data
         this.loadMask.hide();
         var data = [ ];
@@ -123,8 +118,31 @@ timelinemarker.TYPE = {
             });
         });
 
+        //Check the last record to see if the date extends beyond today. If not, then it was deleted permanently
+        //TODO
+
+        var deletedDate = new Date(records[0].get("_ValidTo"));
+        var deletedRecord = null;
+        _.each(records, function(record) {
+            var d = new Date(record.get("_ValidTo"));
+            if (d > deletedDate) {
+                deletedDate = d;
+                deletedRecord = record;
+            }
+        });
+        //We had changes that don't continue beyond today, so it must have been deleted
+        if ( deletedDate < new Date()) {
+            data.push( {
+                label: deletedRecord.get('FormattedID'),
+                markerType: timelinemarker.TYPE.ITEM_DELETION,
+                timeStamp: deletedDate,
+                timeDuration: duration > (10 * 1000 * 60 * 60 * 24 * 365)? 1: duration,  //<10 years
+                record: deletedRecord
+            });
+        }
+
         if (data.length >1) {
-            Ext.create('timeline', {
+            me.timeline = Ext.create('timeline', {
                 parent: this.down('#svg'),
                 barWidth: 300,
                 barLength: this.getEl().getWidth(),
@@ -133,14 +151,94 @@ timelinemarker.TYPE = {
         }
         else {
             Rally.ui.notify.Notifier.showWarning( {
-                msg: 'Insufficient history to show timeline'
-            })
+                message: 'Insufficient history to show timeline'
+            });
         }
     },
 
-    _parseType: function() {
-        return timelinemarker.TYPE.SIZE_CHANGE;
+    _parseType: function(record) {
+
+        if ( record.raw._SnapshotType === 'CREATE') {
+            return timelinemarker.TYPE.ITEM_CREATION;
+        }
+        else if ( record.raw._SnapshotType === 'DELETE') {
+            return timelinemarker.TYPE.ITEM_DELETION;
+        }
+        else if ( record.raw._SnapshotType === 'RESTORE') {
+            return timelinemarker.TYPE.ITEM_RESTORE;
+        }
+
+         var common = this._parseCommon(record);
+         if (common) { return common; } 
+
+        //If we are here, we are most likely UPDATE
+        record.raw._TypeHierarchy.reverse();
+        if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
+            return this._parsePI(record);
+        }
+
+        switch (record.raw._TypeHierarchy[0]) {
+            case  'HierarchicalRequirement': {
+                return this._parseStory(record);
+            }
+            case  'Defect': {
+                return this._parseDefect(record);
+            }
+            case  'Defect': {
+                return this._parseTask(record);
+            }
+        }
+        return timelinemarker.TYPE.UNKNOWN;
+
     },
+
+    _parseStory: function(record) {
+        var checkVar = [
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.SIZE_CHANGE },
+        ];
+        var retval = null;
+
+        _.each(checkVar, function( check) {
+            var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+            if ( lvar ){
+                if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
+                    retval = check.type;
+                }
+            }    
+        });
+
+        //Do other type specific checks here
+        return retval;
+    },
+
+    _parseCommon: function(record) {
+        var checkVar = [
+            { field: 'DragAndDropRank', type: timelinemarker.TYPE.DRAGNDROP_CHANGE },
+            { field: 'Owner', type: timelinemarker.TYPE.OWNER_CHANGE },
+            { field: 'Project', type: timelinemarker.TYPE.PROJECT_CHANGE },
+        ];
+        var retval = null;
+
+        _.each(checkVar, function( check) {
+            var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+            if ( lvar ){
+                if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
+                    retval = check.type;
+                }
+            }    
+        });
+
+        return retval;
+    },
+
+    _parseDefect: function(record) {
+        return timelinemarker.TYPE.UNKNOWN_EVENT;
+    },
+
+    _parsePI: function(record) {
+        return timelinemarker.TYPE.UNKNOWN_EVENT;
+    },
+
 
     //Set the SVG area to the surface we have provided
     _setSVGSize: function() {
@@ -152,13 +250,18 @@ timelinemarker.TYPE = {
 
     _recordChosen: function(source, record) {
         //Get the LBAPI data for the item and then pass to parser. Can use blocked and ready for card colouring in timeline.js
-        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready'];
+        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready', 'PlanEstimate', 'DragAndDropRank', 'Project', 'Owner'];
         var fieldsToHydrate = [
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
             'State', 
             '_PreviousValues.State', 
-            '_User'
+            'Project', 
+            '_PreviousValues.Project', 
+            'Owner', 
+            '_PreviousValues.Owner', 
+            '_User',
+            '_TypeHierarchy'
             
         ];
         var neededFields = [
@@ -166,7 +269,9 @@ timelinemarker.TYPE = {
             'Name',
             '_ValidFrom', 
             '_ValidTo',
-            '_User'
+            '_User',
+            '_SnapshotType',
+            '_TypeHierarchy'
         ];
         var find = {
             "ObjectID": record.get('ObjectID'),
@@ -179,7 +284,9 @@ timelinemarker.TYPE = {
 
         var kb_store = Ext.create('Rally.data.lookback.SnapshotStore',{
             findConfig: find,
+            compress: true,
             fetch: neededFields,
+//            fetch: true,
             hydrate: fieldsToHydrate,
             removeUnauthorizedSnapshots: true,
             limit: 'Infinity'
@@ -251,6 +358,8 @@ timelinemarker.TYPE = {
 
     _makeChooser: function(types) {
         var me = this;
+
+        //Problem: This chooser will only get existing artifacts, not stuff that has been deleted.        
         Ext.create('Rally.ui.dialog.ArtifactChooserDialog', {
             artifactTypes: types,
             autoShow: true,
@@ -283,7 +392,7 @@ timelinemarker.TYPE = {
         barLength: 600,
         tickInterval: 50,   //For histogram bar width
         tickType: Ext.Date.DAY,
-        minTickSpacing: 5, //Fewest number of SVG pixels between ticks.  
+        minTickSpacing: 10, //Fewest number of SVG pixels between ticks.  
         enableXAxis: true     //Boolean as to whether to do the axes here  
     },
 
@@ -299,6 +408,12 @@ timelinemarker.TYPE = {
         this.callParent(arguments);
     },
     
+    destroy: function () {
+        this.surface.remove();
+        this.histogramPane.remove();
+        this.callParent(arguments);
+    },
+    
     initComponent: function() {
     
         var me = this;
@@ -310,7 +425,7 @@ timelinemarker.TYPE = {
             .append('rect')
             .attr('width', this.barLength)
             .attr('height', 100)    //Histogram is always this size
-            .attr('class', 'histogramBox');
+            .attr('class', 'histogrambox');
 
         this.surface = this.timeline.append('g')
             .attr('transform', 'translate(0,' + 100 + ')');
@@ -319,7 +434,7 @@ timelinemarker.TYPE = {
         this.surface.append('rect')
             .attr('width', this.barLength)
             .attr('height', this.barWidth)
-            .attr('class', 'eventBox');
+            .attr('class', 'eventbox');
 
         //TODO: Check whether we need a clipPath as the box is already a viewport
         this.defs = this.surface.append('defs')
@@ -362,7 +477,7 @@ timelinemarker.TYPE = {
             .stop();
         
         //Do one now to set the initial positions
-        for ( var i = 0; i<150; i++) this.force.tick();
+        for ( var i = 0; i<150; i++) { this.force.tick(); }
         _.each(this.data, function(datum) {
             datum.dotTime = me.scale.invert(datum.x);
         });
@@ -380,7 +495,7 @@ timelinemarker.TYPE = {
         }
 
         //Add point
-        var events = this.surface.selectAll('.event')
+        this.surface.selectAll('.event')
             .data(this.data)
             .enter()
             .append("g")
@@ -409,16 +524,35 @@ timelinemarker.TYPE = {
                 var clsStr = 'elastic';
                 switch (d.markerType) {
                     case timelinemarker.TYPE.UNKNOWN_EVENT:
-                        clsStr += ' unknown';
+                        clsStr += ' unknown mouse';
+                        break;
+                    case timelinemarker.TYPE.ITEM_CREATION:
+                        clsStr += ' creation mouse';
+                        break;
+                    case timelinemarker.TYPE.ITEM_DELETION:
+                        clsStr += ' delete mouse';
+                        break;
+                    case timelinemarker.TYPE.ITEM_RESTORE:
+                        clsStr += ' creation mouse';
                         break;
                     case timelinemarker.TYPE.SIZE_CHANGE:
-                    clsStr += ' change';
-                    break;
+                        clsStr += ' change mouse';
+                        break;
+                    case timelinemarker.TYPE.DRAGNDROP_CHANGE:
+                        clsStr += ' change mouse';
+                        break;
+                    case timelinemarker.TYPE.OWNER_CHANGE:
+                        clsStr += ' change mouse';
+                        break;
+                    case timelinemarker.TYPE.PROJECT_CHANGE:
+                        clsStr += ' change warning mouse';
+                        break;
                 }
                 return clsStr; 
-            })
-            .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx]);})            
-            .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx]);});
+            });
+        points.selectAll('.mouse')
+            .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx],me);})            
+            .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx],me);});
 
 
         me.lines = me.timeline.selectAll('.elastic.line');
@@ -426,11 +560,11 @@ timelinemarker.TYPE = {
         
     },
 
-    _mouseOut: function(node, item){
-        if (node.card) node.card.hide();
+    _mouseOut: function(node, item, me){
+        if (node.card) { node.card.hide(); }
     },
 
-    _mouseOver: function(node,item) {
+    _mouseOver: function(node,item, me) {
         if (!(node.record)) {
             //Only exists on real items, so do something for the 'unknown' item
             return;
@@ -438,7 +572,7 @@ timelinemarker.TYPE = {
 
             //For th audit variant, we want to do a check of all the lookback changes associated with this item and do checks
             if ( !node.card) {
-                var cardSize = 200;
+                var cardSize = 400;
                 var card = Ext.create('AuditCard', {
                     'record': node.record,
                     constrain: false,
@@ -450,13 +584,16 @@ timelinemarker.TYPE = {
                     resizable: true,
                     listeners: {
                         show: function(card){
+                            
                             //Move card to one side, preferably closer to the centre of the screen. TODO
+//                            debugger;
                             var xpos = node.x;
                             var ypos = node.y;
-                            card.el.setLeftTop( (xpos - cardSize) < 0 ? xpos + cardSize : 
-                                    ((xpos + cardSize) > (this.getSize().width) ? xpos - cardSize: xpos)
-                                    , 
-                                (ypos + card.getSize().height)> this.getSize().height ? ypos - (card.getSize().height+20) : ypos);
+                            var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
+                            card.el.setLeftTop( 
+                                (xpos - cardSize) < 0 ? xpos + (me.minTickSpacing*2) : ((xpos + cardSize) > outerLayout.width ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2)), 
+                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (cardSize + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
+                            );
                         }
                     }
                 });
@@ -479,7 +616,7 @@ timelinemarker.TYPE = {
                 return me.scale(d.dotTime);})
             .attr('x2', function(d) { return me.scale(d.timeStamp);})
             .attr('cx', function(d) { 
-                return me.scale(d.dotTime);})
+                return me.scale(d.dotTime);});
 
     },
 
@@ -16910,14 +17047,15 @@ Object.defineProperty(exports, '__esModule', { value: true });
                 Ext.define('AuditCard', {
     extend: 'Ext.Component',
     cls: 'rui-card',
-    items: [
-        {
-            xtype: 'container',
-            itemId: 'cardbox',
-            width: 400,
-            height: 400
-        }
-    ],
+    width: 800,
+    // items: [
+    //     {
+    //         xtype: 'container',
+    //         itemId: 'cardbox',
+    //         width: 800,
+//            height: 400
+//        }
+//   ],
 
     config: {
         defaultConfig: {
@@ -16930,15 +17068,49 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
     initComponent: function() {
         this.callParent(arguments);
-        var me = this;
         this.on('beforerender', this._onBeforeRender, this);
     },
 
     _getUserHtml: function() {
         var data = {
             Owner: '/user/' + this.record.get('_User'),
+        };
+        return '<td>' + Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data) + '</td>';
+    },
+
+    _getChangeHtml: function() {
+        var me = this;
+        var html = '';
+
+        /* TODO: What conditions can the lookback api create:
+            1. item creation
+            2. fields setting
+            3. field update
+            4. deletion???
+        */
+        if ( this.record.raw._PreviousValues ) {
+            var k = Object.keys(this.record.raw._PreviousValues);
+
+            if (k.length > 0) {
+                html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>';
+            }
+            _.each(k, function(key) {
+                //If the hydrate has given us an object, we needs its name
+                var oname = me.record.get('_PreviousValues.' + key);
+                var nname = me.record.get(key);
+                if (oname && oname.hasOwnProperty('Name')) { oname = oname.Name;}
+                if (nname && nname.hasOwnProperty('Name')) { nname = nname.Name;}
+
+                html += '<td class="cardleftcol">' + key + '</td>';
+                html += '<td class="cardmiddlecol">' + oname + '</td>';
+                html += '<td class="cardrightcol">' + nname + '</td>';
+                html += '</tr><tr>';
+            });
         }
-        return Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data);
+        else {
+            //TODO Columns without previousvalues
+        }
+        return html + '</tr><tr>';
     },
 
     _buildHtml: function () {
@@ -16956,15 +17128,14 @@ Object.defineProperty(exports, '__esModule', { value: true });
         }
 
         html.push(Ext.DomHelper.createHtml(artifactColorDiv));
-        html.push('<div class="card-table-ct"><table class="card-table"><tr>');
-
+        html.push('<div class="card-table-ct"><table style="width:' + this.width + 'px" class="card-table"><tr>');
         html.push(this._getUserHtml());
+        html.push('<td>' + this.record.get('FormattedID') + '</td><td>' + 
+            Ext.Date.format(new Date(this.record.get('_ValidFrom')), 'Y-M-d H:i') + '</td>');
+        html.push('</tr><tr>');
+        html.push(this._getChangeHtml());
 
         html.push('</tr></table>');
-
-        if (this.iconsPlugin) {
-            html.push(this.iconsPlugin.getHtml());
-        }
 
         html.push('</div>');
 
@@ -17002,10 +17173,6 @@ Object.defineProperty(exports, '__esModule', { value: true });
         if (this.shouldShowReadyBorder()) {
             this.addCls('ready');
         }
-    },
-
-    parseEvent: function(data, record) {
-        debugger;
     }
 });
 
@@ -17022,20 +17189,20 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
     <style type="text/css">
         /* If we want a box but want to fade in and out, use opacity not visibility */
-.eventBox {
+.eventbox {
   opacity: 0.05;
   fill: #000000;
 }
-.histogramBox {
+.histogrambox {
   opacity: 0.05;
   fill: #0000ff;
 }
 .elastic {
-  stroke-width: 1;
+  stroke-width: 2;
+  stroke: white;
 }
 .line {
   stroke: #c6c6cc;
-  z-index: 15000;
 }
 .point {
   stroke: red;
@@ -17046,11 +17213,56 @@ Object.defineProperty(exports, '__esModule', { value: true });
   fill: purple;
 }
 .change {
-  stroke: palegreen;
   fill: green;
 }
 .unknown {
   fill: black;
+}
+.creation {
+  fill: yellow;
+}
+.mouse:pseudo-class {
+  enableCard: true;
+}
+.dragndrop {
+  fill: cyan;
+}
+.delete {
+  fill: red;
+}
+.warning {
+  stroke: orange;
+  stroke-width: 3;
+}
+.cardleftcol {
+  border: 1px grey;
+  border-style: none solid none none;
+  text-align: center;
+}
+.cardmiddlecol {
+  border: 1px grey;
+  border-style: none solid none solid;
+  text-align: center;
+}
+.cardrightcol {
+  border: 1px grey;
+  border-style: none none none solid;
+  text-align: center;
+}
+.cardlefthdr {
+  border: 1px grey;
+  border-style: none solid solid none;
+  text-align: center;
+}
+.cardmiddlehdr {
+  border: 1px grey;
+  border-style: none solid solid solid;
+  text-align: center;
+}
+.cardrighthdr {
+  border: 1px grey;
+  border-style: none none solid solid;
+  text-align: center;
 }
 
     </style>

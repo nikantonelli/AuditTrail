@@ -22,14 +22,13 @@ Ext.define('AuditCard', {
 
     initComponent: function() {
         this.callParent(arguments);
-        var me = this;
         this.on('beforerender', this._onBeforeRender, this);
     },
 
     _getUserHtml: function() {
         var data = {
             Owner: '/user/' + this.record.get('_User'),
-        }
+        };
         return '<td>' + Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data) + '</td>';
     },
 
@@ -47,19 +46,20 @@ Ext.define('AuditCard', {
             var k = Object.keys(this.record.raw._PreviousValues);
 
             if (k.length > 0) {
-                html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>'
+                html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>';
             }
             _.each(k, function(key) {
                 //If the hydrate has given us an object, we needs its name
                 var oname = me.record.get('_PreviousValues.' + key);
                 var nname = me.record.get(key);
-                if (oname.hasOwnProperty('Name')) oname = oname.Name;
-                if (nname.hasOwnProperty('Name')) nname = nname.Name;
+                if (oname && oname.hasOwnProperty('Name')) { oname = oname.Name;}
+                if (nname && nname.hasOwnProperty('Name')) { nname = nname.Name;}
 
-                html += '<td class="cardleftcol">' + key + '</td>'
-                html += '<td class="cardmiddlecol">' + oname + '</td>'
-                html += '<td class="cardrightcol">' + nname + '</td>'
-            })
+                html += '<td class="cardleftcol">' + key + '</td>';
+                html += '<td class="cardmiddlecol">' + oname + '</td>';
+                html += '<td class="cardrightcol">' + nname + '</td>';
+                html += '</tr><tr>';
+            });
         }
         else {
             //TODO Columns without previousvalues
@@ -86,7 +86,7 @@ Ext.define('AuditCard', {
         html.push(this._getUserHtml());
         html.push('<td>' + this.record.get('FormattedID') + '</td><td>' + 
             Ext.Date.format(new Date(this.record.get('_ValidFrom')), 'Y-M-d H:i') + '</td>');
-        html.push('</tr><tr>')
+        html.push('</tr><tr>');
         html.push(this._getChangeHtml());
 
         html.push('</tr></table>');
@@ -127,9 +127,5 @@ Ext.define('AuditCard', {
         if (this.shouldShowReadyBorder()) {
             this.addCls('ready');
         }
-    },
-
-    parseEvent: function(data, record) {
-        debugger;
     }
 });

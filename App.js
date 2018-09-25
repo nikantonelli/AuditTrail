@@ -101,20 +101,22 @@ Ext.define('AuditApp', {
         //TODO
 
         var deletedDate = new Date(records[0].get("_ValidTo"));
+        var deletedRecord = null;
         _.each(records, function(record) {
             var d = new Date(record.get("_ValidTo"));
             if (d > deletedDate) {
                 deletedDate = d;
+                deletedRecord = record;
             }
         });
         //We had changes that don't continue beyond today, so it must have been deleted
         if ( deletedDate < new Date()) {
             data.push( {
-                label: record.get('FormattedID'),
+                label: deletedRecord.get('FormattedID'),
                 markerType: timelinemarker.TYPE.ITEM_DELETION,
                 timeStamp: deletedDate,
                 timeDuration: duration > (10 * 1000 * 60 * 60 * 24 * 365)? 1: duration,  //<10 years
-                record: record
+                record: deletedRecord
             });
         }
 
@@ -129,7 +131,7 @@ Ext.define('AuditApp', {
         else {
             Rally.ui.notify.Notifier.showWarning( {
                 message: 'Insufficient history to show timeline'
-            })
+            });
         }
     },
 
@@ -146,7 +148,7 @@ Ext.define('AuditApp', {
         }
 
          var common = this._parseCommon(record);
-         if (common) return common;
+         if (common) { return common; } 
 
         //If we are here, we are most likely UPDATE
         record.raw._TypeHierarchy.reverse();
@@ -176,8 +178,9 @@ Ext.define('AuditApp', {
         var retval = null;
 
         _.each(checkVar, function( check) {
-            if ( checkVar = (record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field))){
-                if (checkVar !== record.get(check.field)){
+            var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+            if ( lvar ){
+                if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
                     retval = check.type;
                 }
             }    
@@ -188,7 +191,6 @@ Ext.define('AuditApp', {
     },
 
     _parseCommon: function(record) {
-        console.log(record);
         var checkVar = [
             { field: 'DragAndDropRank', type: timelinemarker.TYPE.DRAGNDROP_CHANGE },
             { field: 'Owner', type: timelinemarker.TYPE.OWNER_CHANGE },
@@ -197,8 +199,9 @@ Ext.define('AuditApp', {
         var retval = null;
 
         _.each(checkVar, function( check) {
-            if ( checkVar = (record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field))){
-                if (checkVar !== record.get(check.field)){
+            var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+            if ( lvar ){
+                if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
                     retval = check.type;
                 }
             }    

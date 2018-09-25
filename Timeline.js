@@ -97,7 +97,7 @@
             .stop();
         
         //Do one now to set the initial positions
-        for ( var i = 0; i<150; i++) this.force.tick();
+        for ( var i = 0; i<150; i++) { this.force.tick(); }
         _.each(this.data, function(datum) {
             datum.dotTime = me.scale.invert(datum.x);
         });
@@ -115,7 +115,7 @@
         }
 
         //Add point
-        var events = this.surface.selectAll('.event')
+        this.surface.selectAll('.event')
             .data(this.data)
             .enter()
             .append("g")
@@ -147,7 +147,7 @@
                         clsStr += ' unknown mouse';
                         break;
                     case timelinemarker.TYPE.ITEM_CREATION:
-                        clsStr += ' creation';
+                        clsStr += ' creation mouse';
                         break;
                     case timelinemarker.TYPE.ITEM_DELETION:
                         clsStr += ' delete mouse';
@@ -171,8 +171,8 @@
                 return clsStr; 
             });
         points.selectAll('.mouse')
-            .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx]);})            
-            .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx]);});
+            .on('mouseover', function(data, idx, arr ) { me._mouseOver(data, arr[idx],me);})            
+            .on('mouseout', function( data, idx, arr) { me._mouseOut(data, arr[idx],me);});
 
 
         me.lines = me.timeline.selectAll('.elastic.line');
@@ -180,11 +180,11 @@
         
     },
 
-    _mouseOut: function(node, item){
-        if (node.card) node.card.hide();
+    _mouseOut: function(node, item, me){
+        if (node.card) { node.card.hide(); }
     },
 
-    _mouseOver: function(node,item) {
+    _mouseOver: function(node,item, me) {
         if (!(node.record)) {
             //Only exists on real items, so do something for the 'unknown' item
             return;
@@ -204,14 +204,16 @@
                     resizable: true,
                     listeners: {
                         show: function(card){
+                            
                             //Move card to one side, preferably closer to the centre of the screen. TODO
-                            debugger;
+//                            debugger;
                             var xpos = node.x;
                             var ypos = node.y;
-                            card.el.setLeftTop( (xpos - cardSize) < 0 ? xpos + cardSize : 
-                                    ((xpos + cardSize) > (this.getSize().width) ? xpos - cardSize: xpos)
-                                    , 
-                                (ypos + card.getSize().height)> this.getSize().height ? ypos - (card.getSize().height+20) : ypos);
+                            var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
+                            card.el.setLeftTop( 
+                                (xpos - cardSize) < 0 ? xpos + (me.minTickSpacing*2) : ((xpos + cardSize) > outerLayout.width ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2)), 
+                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (cardSize + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
+                            );
                         }
                     }
                 });
@@ -234,7 +236,7 @@
                 return me.scale(d.dotTime);})
             .attr('x2', function(d) { return me.scale(d.timeStamp);})
             .attr('cx', function(d) { 
-                return me.scale(d.dotTime);})
+                return me.scale(d.dotTime);});
 
     },
 
