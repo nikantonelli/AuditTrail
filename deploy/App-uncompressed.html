@@ -11,13 +11,15 @@
 
 timelinemarker.TYPE = {
     UNKNOWN_EVENT: Symbol(),
+//Equivalent to LBAPI record types for now
     ITEM_CREATION: Symbol(),
     ITEM_DELETION: Symbol(),
     ITEM_RESTORE: Symbol(),
-    DRAGNDROP_CHANGE: Symbol(),
-    SIZE_CHANGE: Symbol(),
-    OWNER_CHANGE: Symbol(),
-    PROJECT_CHANGE: Symbol()
+    ITEM_UPDATE: Symbol(),
+//These are used to indicate condition to the auditor
+    NORMAL: Symbol(),
+    WARNING: Symbol(),
+    ERROR: Symbol(),
 };
                 Ext.define('AuditApp', {
     extend: 'Rally.app.App',
@@ -156,45 +158,59 @@ timelinemarker.TYPE = {
         }
     },
 
+    /* We need to parse the error to work out what colouring to use in the timeline before we get there 
+        So we will have a main event type and a calculate sub-type for a border around the timeline marker
+
+        We also we need to re-calculate how to report the problem in the AuditCard code
+    */
     _parseType: function(record) {
+        var typeCode = { type: timelinemarker.TYPE.UNKNOWN_EVENT, subtype: timelinemarker.TYPE.UNKNOWN_EVENT};
 
         if ( record.raw._SnapshotType === 'CREATE') {
-            return timelinemarker.TYPE.ITEM_CREATION;
+            typeCode.type = timelinemarker.TYPE.ITEM_CREATION;
         }
         else if ( record.raw._SnapshotType === 'DELETE') {
-            return timelinemarker.TYPE.ITEM_DELETION;
+            typeCode.type = timelinemarker.TYPE.ITEM_DELETION;
         }
         else if ( record.raw._SnapshotType === 'RESTORE') {
-            return timelinemarker.TYPE.ITEM_RESTORE;
+            typeCode.type = timelinemarker.TYPE.ITEM_RESTORE;
+        }
+        else if ( record.raw._SnapshotType === 'UPDATE') {
+            typeCode.type = timelinemarker.TYPE.ITEM_UPDATE;
         }
 
-         var common = this._parseCommon(record);
-         if (common) { return common; } 
+        var common = this._parseCommon(record);
+        if (common) { 
+             typeCode.subtype = common; 
+        } else { 
+            record.raw._TypeHierarchy.reverse();
+            if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
+                typeCode.subtype = this._parsePI(record);
+            }else {
 
-        //If we are here, we are most likely UPDATE
-        record.raw._TypeHierarchy.reverse();
-        if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
-            return this._parsePI(record);
+                switch (record.raw._TypeHierarchy[0]) {
+                    case  'HierarchicalRequirement': {
+                        typeCode.subtype = this._parseStory(record);
+                        break;
+                    }
+                    case  'Defect': {
+                        typeCode.subtype = this._parseDefect(record);
+                        break;
+                    }
+                    case  'Task': {
+                        typeCode.subtype = this._parseTask(record);
+                        break;
+                    }
+                }
+            }
         }
-
-        switch (record.raw._TypeHierarchy[0]) {
-            case  'HierarchicalRequirement': {
-                return this._parseStory(record);
-            }
-            case  'Defect': {
-                return this._parseDefect(record);
-            }
-            case  'Defect': {
-                return this._parseTask(record);
-            }
-        }
-        return timelinemarker.TYPE.UNKNOWN;
+        return typeCode;
 
     },
 
     _parseStory: function(record) {
         var checkVar = [
-            { field: 'PlanEstimate', type: timelinemarker.TYPE.SIZE_CHANGE },
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },
         ];
         var retval = null;
 
@@ -213,9 +229,9 @@ timelinemarker.TYPE = {
 
     _parseCommon: function(record) {
         var checkVar = [
-            { field: 'DragAndDropRank', type: timelinemarker.TYPE.DRAGNDROP_CHANGE },
-            { field: 'Owner', type: timelinemarker.TYPE.OWNER_CHANGE },
-            { field: 'Project', type: timelinemarker.TYPE.PROJECT_CHANGE },
+            { field: 'DragAndDropRank', type: timelinemarker.TYPE.NORMAL },
+            { field: 'Owner', type: timelinemarker.TYPE.NORMAL },
+            { field: 'Project', type: timelinemarker.TYPE.WARNING },
         ];
         var retval = null;
 
@@ -239,6 +255,10 @@ timelinemarker.TYPE = {
         return timelinemarker.TYPE.UNKNOWN_EVENT;
     },
 
+    _parseTask: function(record) {
+        return timelinemarker.TYPE.UNKNOWN_EVENT;
+    },
+
 
     //Set the SVG area to the surface we have provided
     _setSVGSize: function() {
@@ -250,7 +270,28 @@ timelinemarker.TYPE = {
 
     _recordChosen: function(source, record) {
         //Get the LBAPI data for the item and then pass to parser. Can use blocked and ready for card colouring in timeline.js
-        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready', 'PlanEstimate', 'DragAndDropRank', 'Project', 'Owner'];
+
+        //Om userstories, we have a dynamically named field ('Feature'?) that we have no idea what it will be called here, but we can pick up 'Portfolio'
+        var fieldsOfInterest = [
+            'Blocked', 
+            'DefectStatus',
+            'DragAndDropRank', 
+            'Expedite',
+            'FlowState',
+            'Iteration', 
+            'Owner',
+            'PlanEstimate', 
+            'Portfolio',
+            'Project', 
+            'Ready', 
+            'Release', 
+            'ScheduleState', 
+            'State', 
+            'TaskEstimateTotal',
+            'TaskEstimateRemaining',
+            'TaskStatus',
+            'TestCaseStatus'
+        ];
         var fieldsToHydrate = [
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
@@ -261,7 +302,8 @@ timelinemarker.TYPE = {
             'Owner', 
             '_PreviousValues.Owner', 
             '_User',
-            '_TypeHierarchy'
+            '_TypeHierarchy',
+            'FlowState'
             
         ];
         var neededFields = [
@@ -473,15 +515,13 @@ timelinemarker.TYPE = {
                 return me.scale(d.timeStamp); 
             }).strength(0.1))
             .force("y1", d3.forceY(this.barWidth/2).strength(0.1))
+            .force("y3", d3.forceY(0).strength(-0.01))
             .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))    //Stop overlapping dots
             .stop();
         
         //Do one now to set the initial positions
-        for ( var i = 0; i<150; i++) { this.force.tick(); }
-        _.each(this.data, function(datum) {
-            datum.dotTime = me.scale.invert(datum.x);
-        });
-
+        this._forceCalculate();
+        
         //Now we have the dot positions, mark them in the time domain
 
         //We may want the option of a zoomable area with no dates shown.
@@ -506,6 +546,7 @@ timelinemarker.TYPE = {
             .attr('y1', function(d) { return d.y;})
             .attr('x2', function(d) { return d.baseline.x;})
             .attr('y2', function(d) { return d.baseline.y;})
+            .attr('id', function(d) { return 'line' + d.index;})
             .attr("class", 'elastic line');
             
         var points = this.surface.selectAll('.point')
@@ -522,7 +563,7 @@ timelinemarker.TYPE = {
             .attr('id', function(d) { return 'point' + d.index;})
             .attr('class', function(d) {
                 var clsStr = 'elastic';
-                switch (d.markerType) {
+                switch (d.markerType.type) {
                     case timelinemarker.TYPE.UNKNOWN_EVENT:
                         clsStr += ' unknown mouse';
                         break;
@@ -535,17 +576,19 @@ timelinemarker.TYPE = {
                     case timelinemarker.TYPE.ITEM_RESTORE:
                         clsStr += ' creation mouse';
                         break;
-                    case timelinemarker.TYPE.SIZE_CHANGE:
+                    case timelinemarker.TYPE.ITEM_UPDATE:
                         clsStr += ' change mouse';
                         break;
-                    case timelinemarker.TYPE.DRAGNDROP_CHANGE:
-                        clsStr += ' change mouse';
+                }
+                switch( d.markerType.subtype) {
+                    case timelinemarker.TYPE.NORMAL:
+                        clsStr += '';
                         break;
-                    case timelinemarker.TYPE.OWNER_CHANGE:
-                        clsStr += ' change mouse';
+                    case timelinemarker.TYPE.WARNING:
+                        clsStr += ' warning';
                         break;
-                    case timelinemarker.TYPE.PROJECT_CHANGE:
-                        clsStr += ' change warning mouse';
+                    case timelinemarker.TYPE.ERROR:
+                        clsStr += ' warning';
                         break;
                 }
                 return clsStr; 
@@ -560,8 +603,13 @@ timelinemarker.TYPE = {
         
     },
 
+
     _mouseOut: function(node, item, me){
         if (node.card) { node.card.hide(); }
+        var assocLine = d3.selectAll('line').filter( function(line) { return (line.index === node.index);});
+        //        assocLine.classed('line', true);
+        assocLine.classed('highlightline', false);
+
     },
 
     _mouseOver: function(node,item, me) {
@@ -600,6 +648,11 @@ timelinemarker.TYPE = {
                 node.card = card;
             }
             node.card.show();
+
+            //Findthe line associated with this node and highlight
+            var assocLine = d3.selectAll('line').filter( function(line) { return (line.index === node.index);});
+//            assocLine.classed('line', false);
+            assocLine.classed('highlightline', true);
         }
     }, 
 
@@ -645,8 +698,20 @@ timelinemarker.TYPE = {
         //Then zoom out using the scale and redraw technique
         this.scale.range([this.leftEnd , this.rightEnd]);
 
+        // this.force.alpha(1);
+        // this._forceCalculate();
+
         //Redraw after all calcs
         this._redrawTimeline();
+    },
+
+    _forceCalculate: function() {
+        var me = this;
+        this.force.force("collide", d3.forceManyBody().strength(-this.minTickSpacing*2* ((this.rightEnd-this.leftEnd)/this.barLength)));    //Stop overlapping dots
+        for (var i = 0; i <150; i++) { this.force.tick();}
+        _.each(this.data, function(datum) {
+            datum.dotTime = me.scale.invert(datum.x);
+        });
     }
   });
 }());
@@ -17044,7 +17109,12 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 })));
 
-                Ext.define('AuditCard', {
+                
+//If we select fields:true to fetch LBAPI records, we don't get any info in the 'data' section, 
+//so we have to use the 'raw' section throughout.
+
+
+Ext.define('AuditCard', {
     extend: 'Ext.Component',
     cls: 'rui-card',
     width: 800,
@@ -17058,10 +17128,8 @@ Object.defineProperty(exports, '__esModule', { value: true });
 //   ],
 
     config: {
-        defaultConfig: {
-            showReadyIcon: true,
-            showBlockedIcon: true
-        }
+        showReadyIcon: true,
+        showBlockedIcon: true
     },
 
     _Owner: {},
@@ -17073,7 +17141,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
     _getUserHtml: function() {
         var data = {
-            Owner: '/user/' + this.record.get('_User'),
+            Owner: '/user/' + this.record.raw['_User'],
         };
         return '<td>' + Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data) + '</td>';
     },
@@ -17081,7 +17149,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
     _getChangeHtml: function() {
         var me = this;
         var html = '';
-
+        
         /* TODO: What conditions can the lookback api create:
             1. item creation
             2. fields setting
@@ -17095,11 +17163,15 @@ Object.defineProperty(exports, '__esModule', { value: true });
                 html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>';
             }
             _.each(k, function(key) {
+                
                 //If the hydrate has given us an object, we needs its name
-                var oname = me.record.get('_PreviousValues.' + key);
-                var nname = me.record.get(key);
+                var oname = me.record.raw._PreviousValues[key];
+                var nname = me.record.raw[key];
                 if (oname && oname.hasOwnProperty('Name')) { oname = oname.Name;}
                 if (nname && nname.hasOwnProperty('Name')) { nname = nname.Name;}
+
+                if (!oname) { oname = '';}
+                if (!nname) { nname = '';}
 
                 html += '<td class="cardleftcol">' + key + '</td>';
                 html += '<td class="cardmiddlecol">' + oname + '</td>';
@@ -17121,17 +17193,17 @@ Object.defineProperty(exports, '__esModule', { value: true });
             cls: 'artifact-color'
         };
 
-        if (this.record.get('DisplayColor')) {
+        if (this.record.raw['DisplayColor']){
             artifactColorDiv.style = {
-                backgroundColor: this.record.get('DisplayColor')
+                backgroundColor: this.record.raw['DisplayColor']
             };
         }
 
         html.push(Ext.DomHelper.createHtml(artifactColorDiv));
         html.push('<div class="card-table-ct"><table style="width:' + this.width + 'px" class="card-table"><tr>');
         html.push(this._getUserHtml());
-        html.push('<td>' + this.record.get('FormattedID') + '</td><td>' + 
-            Ext.Date.format(new Date(this.record.get('_ValidFrom')), 'Y-M-d H:i') + '</td>');
+        html.push('<td>' + this.record.raw['FormattedID'] + '</td><td>' + 
+            Ext.Date.format(new Date(this.record.raw['_ValidFrom']), 'Y-M-d H:i') + '</td>');
         html.push('</tr><tr>');
         html.push(this._getChangeHtml());
 
@@ -17152,7 +17224,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
     },
 
     isReady: function () {
-        return this.record.get('Ready');
+        return this.record.raw['Ready'];
     },
 
     shouldShowBlockedBorder: function () {
@@ -17160,7 +17232,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
     },
 
     isBlocked: function () {
-        return this.record.get('Blocked');
+        return this.record.raw['Blocked'];
     },
 
     _displayState: function () {
@@ -17203,6 +17275,9 @@ Object.defineProperty(exports, '__esModule', { value: true });
 }
 .line {
   stroke: #c6c6cc;
+}
+.highlightline {
+  stroke: #3a1212;
 }
 .point {
   stroke: red;

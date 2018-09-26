@@ -18,6 +18,10 @@
     stroke: rgb(198, 198, 204);
 }
 
+.highlightline {
+    stroke: #3a1212
+}
+
 .point {
     stroke: red;
     fill: yellow;

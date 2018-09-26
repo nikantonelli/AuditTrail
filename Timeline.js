@@ -93,15 +93,13 @@
                 return me.scale(d.timeStamp); 
             }).strength(0.1))
             .force("y1", d3.forceY(this.barWidth/2).strength(0.1))
+            .force("y3", d3.forceY(0).strength(-0.01))
             .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))    //Stop overlapping dots
             .stop();
         
         //Do one now to set the initial positions
-        for ( var i = 0; i<150; i++) { this.force.tick(); }
-        _.each(this.data, function(datum) {
-            datum.dotTime = me.scale.invert(datum.x);
-        });
-
+        this._forceCalculate();
+        
         //Now we have the dot positions, mark them in the time domain
 
         //We may want the option of a zoomable area with no dates shown.
@@ -126,6 +124,7 @@
             .attr('y1', function(d) { return d.y;})
             .attr('x2', function(d) { return d.baseline.x;})
             .attr('y2', function(d) { return d.baseline.y;})
+            .attr('id', function(d) { return 'line' + d.index;})
             .attr("class", 'elastic line');
             
         var points = this.surface.selectAll('.point')
@@ -142,7 +141,7 @@
             .attr('id', function(d) { return 'point' + d.index;})
             .attr('class', function(d) {
                 var clsStr = 'elastic';
-                switch (d.markerType) {
+                switch (d.markerType.type) {
                     case timelinemarker.TYPE.UNKNOWN_EVENT:
                         clsStr += ' unknown mouse';
                         break;
@@ -155,17 +154,19 @@
                     case timelinemarker.TYPE.ITEM_RESTORE:
                         clsStr += ' creation mouse';
                         break;
-                    case timelinemarker.TYPE.SIZE_CHANGE:
+                    case timelinemarker.TYPE.ITEM_UPDATE:
                         clsStr += ' change mouse';
                         break;
-                    case timelinemarker.TYPE.DRAGNDROP_CHANGE:
-                        clsStr += ' change mouse';
+                }
+                switch( d.markerType.subtype) {
+                    case timelinemarker.TYPE.NORMAL:
+                        clsStr += '';
                         break;
-                    case timelinemarker.TYPE.OWNER_CHANGE:
-                        clsStr += ' change mouse';
+                    case timelinemarker.TYPE.WARNING:
+                        clsStr += ' warning';
                         break;
-                    case timelinemarker.TYPE.PROJECT_CHANGE:
-                        clsStr += ' change warning mouse';
+                    case timelinemarker.TYPE.ERROR:
+                        clsStr += ' warning';
                         break;
                 }
                 return clsStr; 
@@ -180,8 +181,13 @@
         
     },
 
+
     _mouseOut: function(node, item, me){
         if (node.card) { node.card.hide(); }
+        var assocLine = d3.selectAll('line').filter( function(line) { return (line.index === node.index);});
+        //        assocLine.classed('line', true);
+        assocLine.classed('highlightline', false);
+
     },
 
     _mouseOver: function(node,item, me) {
@@ -220,6 +226,11 @@
                 node.card = card;
             }
             node.card.show();
+
+            //Findthe line associated with this node and highlight
+            var assocLine = d3.selectAll('line').filter( function(line) { return (line.index === node.index);});
+//            assocLine.classed('line', false);
+            assocLine.classed('highlightline', true);
         }
     }, 
 
@@ -265,8 +276,20 @@
         //Then zoom out using the scale and redraw technique
         this.scale.range([this.leftEnd , this.rightEnd]);
 
+        // this.force.alpha(1);
+        // this._forceCalculate();
+
         //Redraw after all calcs
         this._redrawTimeline();
+    },
+
+    _forceCalculate: function() {
+        var me = this;
+        this.force.force("collide", d3.forceManyBody().strength(-this.minTickSpacing*2* ((this.rightEnd-this.leftEnd)/this.barLength)));    //Stop overlapping dots
+        for (var i = 0; i <150; i++) { this.force.tick();}
+        _.each(this.data, function(datum) {
+            datum.dotTime = me.scale.invert(datum.x);
+        });
     }
   });
 }());

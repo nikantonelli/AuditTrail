@@ -135,45 +135,59 @@ Ext.define('AuditApp', {
         }
     },
 
+    /* We need to parse the error to work out what colouring to use in the timeline before we get there 
+        So we will have a main event type and a calculate sub-type for a border around the timeline marker
+
+        We also we need to re-calculate how to report the problem in the AuditCard code
+    */
     _parseType: function(record) {
+        var typeCode = { type: timelinemarker.TYPE.UNKNOWN_EVENT, subtype: timelinemarker.TYPE.UNKNOWN_EVENT};
 
         if ( record.raw._SnapshotType === 'CREATE') {
-            return timelinemarker.TYPE.ITEM_CREATION;
+            typeCode.type = timelinemarker.TYPE.ITEM_CREATION;
         }
         else if ( record.raw._SnapshotType === 'DELETE') {
-            return timelinemarker.TYPE.ITEM_DELETION;
+            typeCode.type = timelinemarker.TYPE.ITEM_DELETION;
         }
         else if ( record.raw._SnapshotType === 'RESTORE') {
-            return timelinemarker.TYPE.ITEM_RESTORE;
+            typeCode.type = timelinemarker.TYPE.ITEM_RESTORE;
+        }
+        else if ( record.raw._SnapshotType === 'UPDATE') {
+            typeCode.type = timelinemarker.TYPE.ITEM_UPDATE;
         }
 
-         var common = this._parseCommon(record);
-         if (common) { return common; } 
+        var common = this._parseCommon(record);
+        if (common) { 
+             typeCode.subtype = common; 
+        } else { 
+            record.raw._TypeHierarchy.reverse();
+            if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
+                typeCode.subtype = this._parsePI(record);
+            }else {
 
-        //If we are here, we are most likely UPDATE
-        record.raw._TypeHierarchy.reverse();
-        if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
-            return this._parsePI(record);
+                switch (record.raw._TypeHierarchy[0]) {
+                    case  'HierarchicalRequirement': {
+                        typeCode.subtype = this._parseStory(record);
+                        break;
+                    }
+                    case  'Defect': {
+                        typeCode.subtype = this._parseDefect(record);
+                        break;
+                    }
+                    case  'Task': {
+                        typeCode.subtype = this._parseTask(record);
+                        break;
+                    }
+                }
+            }
         }
-
-        switch (record.raw._TypeHierarchy[0]) {
-            case  'HierarchicalRequirement': {
-                return this._parseStory(record);
-            }
-            case  'Defect': {
-                return this._parseDefect(record);
-            }
-            case  'Defect': {
-                return this._parseTask(record);
-            }
-        }
-        return timelinemarker.TYPE.UNKNOWN;
+        return typeCode;
 
     },
 
     _parseStory: function(record) {
         var checkVar = [
-            { field: 'PlanEstimate', type: timelinemarker.TYPE.SIZE_CHANGE },
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },
         ];
         var retval = null;
 
@@ -192,9 +206,9 @@ Ext.define('AuditApp', {
 
     _parseCommon: function(record) {
         var checkVar = [
-            { field: 'DragAndDropRank', type: timelinemarker.TYPE.DRAGNDROP_CHANGE },
-            { field: 'Owner', type: timelinemarker.TYPE.OWNER_CHANGE },
-            { field: 'Project', type: timelinemarker.TYPE.PROJECT_CHANGE },
+            { field: 'DragAndDropRank', type: timelinemarker.TYPE.NORMAL },
+            { field: 'Owner', type: timelinemarker.TYPE.NORMAL },
+            { field: 'Project', type: timelinemarker.TYPE.WARNING },
         ];
         var retval = null;
 
@@ -218,6 +232,10 @@ Ext.define('AuditApp', {
         return timelinemarker.TYPE.UNKNOWN_EVENT;
     },
 
+    _parseTask: function(record) {
+        return timelinemarker.TYPE.UNKNOWN_EVENT;
+    },
+
 
     //Set the SVG area to the surface we have provided
     _setSVGSize: function() {
@@ -229,7 +247,28 @@ Ext.define('AuditApp', {
 
     _recordChosen: function(source, record) {
         //Get the LBAPI data for the item and then pass to parser. Can use blocked and ready for card colouring in timeline.js
-        var fieldsOfInterest = ['ScheduleState', 'State', 'Iteration', 'Release', 'Blocked', 'Ready', 'PlanEstimate', 'DragAndDropRank', 'Project', 'Owner'];
+
+        //Om userstories, we have a dynamically named field ('Feature'?) that we have no idea what it will be called here, but we can pick up 'Portfolio'
+        var fieldsOfInterest = [
+            'Blocked', 
+            'DefectStatus',
+            'DragAndDropRank', 
+            'Expedite',
+            'FlowState',
+            'Iteration', 
+            'Owner',
+            'PlanEstimate', 
+            'Portfolio',
+            'Project', 
+            'Ready', 
+            'Release', 
+            'ScheduleState', 
+            'State', 
+            'TaskEstimateTotal',
+            'TaskEstimateRemaining',
+            'TaskStatus',
+            'TestCaseStatus'
+        ];
         var fieldsToHydrate = [
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
@@ -240,7 +279,8 @@ Ext.define('AuditApp', {
             'Owner', 
             '_PreviousValues.Owner', 
             '_User',
-            '_TypeHierarchy'
+            '_TypeHierarchy',
+            'FlowState'
             
         ];
         var neededFields = [
