@@ -19,14 +19,14 @@
         {
             leftMargin: 60,
             topMargin: 10,
-            rightMargin: 0,
+            rightMargin: 30,
             bottomMargin: 10
         },
         yAxisConfig: 
         {
             leftMargin: 60,
             topMargin: 10,
-            rightMargin: 0,
+//            rightMargin: 0,
             bottomMargin: 0,
             minTickSpacing: 15
         }

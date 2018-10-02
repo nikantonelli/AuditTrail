@@ -248,6 +248,8 @@ Ext.define('AuditApp', {
             var checkVar = [
                 { field: 'State', type: timelinemarker.TYPE.NORMAL },
                 { field: 'Children', type: timelinemarker.TYPE.NORMAL },
+                { field: 'PlannedStartDate', type: timelinemarker.TYPE.NORMAL },    //Take note of the exception picked up in the code above!
+                { field: 'PlannedEndDate', type: timelinemarker.TYPE.NORMAL },
             ];
     
             _.each(checkVar, function( check) {

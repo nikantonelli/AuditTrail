@@ -271,6 +271,8 @@ timelinemarker.TYPE = {
             var checkVar = [
                 { field: 'State', type: timelinemarker.TYPE.NORMAL },
                 { field: 'Children', type: timelinemarker.TYPE.NORMAL },
+                { field: 'PlannedStartDate', type: timelinemarker.TYPE.NORMAL },    //Take note of the exception picked up in the code above!
+                { field: 'PlannedEndDate', type: timelinemarker.TYPE.NORMAL },
             ];
     
             _.each(checkVar, function( check) {
@@ -475,14 +477,14 @@ timelinemarker.TYPE = {
         {
             leftMargin: 60,
             topMargin: 10,
-            rightMargin: 0,
+            rightMargin: 30,
             bottomMargin: 10
         },
         yAxisConfig: 
         {
             leftMargin: 60,
             topMargin: 10,
-            rightMargin: 0,
+//            rightMargin: 0,
             bottomMargin: 0,
             minTickSpacing: 15
         }
