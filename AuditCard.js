@@ -6,22 +6,18 @@
 Ext.define('AuditCard', {
     extend: 'Ext.Component',
     cls: 'rui-card',
-    width: 800,
-    // items: [
-    //     {
-    //         xtype: 'container',
-    //         itemId: 'cardbox',
-    //         width: 800,
-//            height: 400
-//        }
-//   ],
 
-    config: {
+
+    defaultConfig: {
         showReadyIcon: true,
-        showBlockedIcon: true
+        showBlockedIcon: true,
+        width: 800,
     },
 
-    _Owner: {},
+    constructor: function(config) {
+        config = Ext.applyIf(Ext.clone(config), this.defaultConfig);
+        this.callParent(arguments);
+    },
 
     initComponent: function() {
         this.callParent(arguments);
@@ -38,7 +34,7 @@ Ext.define('AuditCard', {
     _getChangeHtml: function() {
         var me = this;
         var html = '';
-        
+
         /* TODO: What conditions can the lookback api create:
             1. item creation
             2. fields setting

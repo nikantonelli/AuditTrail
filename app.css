@@ -5,8 +5,17 @@
 }
 
 .histogrambox {
-    opacity: 0.05;
-    fill : blue
+    fill : rgb(215, 215, 240)
+}
+
+.histogrampanel {
+
+}
+
+.histogrambar {
+    stroke-width: 1;
+    stroke: black;
+    fill: rgb(201, 38, 166);
 }
 
 .elastic {
@@ -16,10 +25,16 @@
 
 .line {
     stroke: rgb(198, 198, 204);
+    visibility: visible;
+}
+
+.oldline {
+    stroke: rgb(198, 198, 204);
 }
 
 .highlightline {
-    stroke: #3a1212
+    stroke: #3a1212;
+    visibility: visible;
 }
 
 .point {
@@ -59,6 +74,16 @@
     stroke-width: 3;
 }
 
+.error {
+    stroke: red;
+    stroke-width: 3;
+}
+
+.normal {
+    stroke: green;
+    stroke-width: 3;
+}
+
 .cardleftcol {
     border: 1px grey;
     border-style: none solid none none;
@@ -88,4 +113,12 @@
     border: 1px grey;
     border-style: none none solid solid;
     text-align: center;
+}
+
+.yAxis {
+    font: helvetica;
+}
+
+.xAxis {
+    font: helvetica;
 }

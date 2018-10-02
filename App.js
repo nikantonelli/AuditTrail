@@ -87,14 +87,17 @@ Ext.define('AuditApp', {
         var data = [ ];
 
         _.each(records, function(record) {
-            var duration = new Date(record.get('_ValidTo')) - new Date(record.get('_ValidFrom'));
-            data.push( {
-                label: record.get('FormattedID'),
-                markerType: me._parseType(record),
-                timeStamp: new Date(record.get('_ValidFrom')),
-                timeDuration: duration > (10 * 1000 * 60 * 60 * 24 * 365)? 1: duration,  //<10 years
-                record: record
-            });
+            //If there is a record 
+            if (record.raw._PreviousValues) {
+                var duration = new Date(record.get('_ValidTo')) - new Date(record.get('_ValidFrom'));
+                data.push( {
+                    label: record.get('FormattedID'),
+                    markerType: me._parseType(record),
+                    timeStamp: new Date(record.get('_ValidFrom')),
+                    timeDuration: duration > (10 * 1000 * 60 * 60 * 24 * 365)? 1: duration,  //<10 years
+                    record: record
+                });
+            }
         });
 
         //Check the last record to see if the date extends beyond today. If not, then it was deleted permanently
@@ -161,7 +164,7 @@ Ext.define('AuditApp', {
              typeCode.subtype = common; 
         } else { 
             record.raw._TypeHierarchy.reverse();
-            if ( record.raw._TypeHierarchy[1] === 'Portfolio') {
+            if ( record.raw._TypeHierarchy[1] === 'PortfolioItem') {
                 typeCode.subtype = this._parsePI(record);
             }else {
 
@@ -187,7 +190,7 @@ Ext.define('AuditApp', {
 
     _parseStory: function(record) {
         var checkVar = [
-            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },    //Might want to warn if changed whike Iteration is set
         ];
         var retval = null;
 
@@ -205,10 +208,12 @@ Ext.define('AuditApp', {
     },
 
     _parseCommon: function(record) {
+        
         var checkVar = [
             { field: 'DragAndDropRank', type: timelinemarker.TYPE.NORMAL },
             { field: 'Owner', type: timelinemarker.TYPE.NORMAL },
             { field: 'Project', type: timelinemarker.TYPE.WARNING },
+            { field: 'Name', type: timelinemarker.TYPE.NORMAL },
         ];
         var retval = null;
 
@@ -229,7 +234,33 @@ Ext.define('AuditApp', {
     },
 
     _parsePI: function(record) {
-        return timelinemarker.TYPE.UNKNOWN_EVENT;
+        var retval = null;
+
+        //We want to check to see if the Planned Start/End dates were modified while it was assigned to a release
+        if ( record.raw._PreviousValues && 
+                !record.raw._PreviousValues.hasOwnProperty('Release') && record.raw.hasOwnProperty('Release') &&    //Release set but no to it change here
+                (record.raw._PreviousValues.hasOwnProperty('PlannedStartDate') || record.raw._PreviousValues.hasOwnProperty('PlannedEndDate'))  //Either of the dates changed?
+        ) {
+            retval = timelinemarker.TYPE.ERROR;
+        }
+
+        if (!retval) {
+            var checkVar = [
+                { field: 'State', type: timelinemarker.TYPE.NORMAL },
+                { field: 'Children', type: timelinemarker.TYPE.NORMAL },
+            ];
+    
+            _.each(checkVar, function( check) {
+                var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+                if ( lvar ){
+                    if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
+                        retval = check.type;
+                    }
+                }    
+            });
+    
+        }
+        return retval;
     },
 
     _parseTask: function(record) {
@@ -251,13 +282,18 @@ Ext.define('AuditApp', {
         //Om userstories, we have a dynamically named field ('Feature'?) that we have no idea what it will be called here, but we can pick up 'Portfolio'
         var fieldsOfInterest = [
             'Blocked', 
+            'Children',
             'DefectStatus',
             'DragAndDropRank', 
             'Expedite',
             'FlowState',
+            'FormattedID',
             'Iteration', 
+            'Name',
             'Owner',
             'PlanEstimate', 
+            'PlannedEndDate',
+            'PlannedStartDate',
             'Portfolio',
             'Project', 
             'Ready', 
@@ -284,8 +320,6 @@ Ext.define('AuditApp', {
             
         ];
         var neededFields = [
-            'FormattedID', 
-            'Name',
             '_ValidFrom', 
             '_ValidTo',
             '_User',
@@ -296,10 +330,10 @@ Ext.define('AuditApp', {
             "ObjectID": record.get('ObjectID'),
         };
 
-        //Add previous values fetches
-        _.each(fieldsOfInterest, function (field) { neededFields.push('_PreviousValues.' + field);});
         //Add the fields themselves
         neededFields = neededFields.concat(fieldsOfInterest);
+        //Add previous values fetches
+        _.each(fieldsOfInterest, function (field) { neededFields.push('_PreviousValues.' + field);});
 
         var kb_store = Ext.create('Rally.data.lookback.SnapshotStore',{
             findConfig: find,

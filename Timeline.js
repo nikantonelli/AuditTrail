@@ -13,48 +13,90 @@
         tickInterval: 50,   //For histogram bar width
         tickType: Ext.Date.DAY,
         minTickSpacing: 10, //Fewest number of SVG pixels between ticks.  
-        enableXAxis: true     //Boolean as to whether to do the axes here  
+        enableXAxis: true,     //Boolean as to whether to do the axes here  
+        enableYAxis: true,
+        xAxisConfig: 
+        {
+            leftMargin: 60,
+            topMargin: 10,
+            rightMargin: 0,
+            bottomMargin: 10
+        },
+        yAxisConfig: 
+        {
+            leftMargin: 60,
+            topMargin: 10,
+            rightMargin: 0,
+            bottomMargin: 0,
+            minTickSpacing: 15
+        }
     },
 
     constructor: function(config) {
-//        me = this;
         config = Ext.applyIf(Ext.clone(config), this.defaultConfig);
-        // this.plugins = [
-        //     {ptype: 'rallycardcontentleft'},
-        //     {ptype: 'rallycardcontentright'}
-        // ];
-        // delete this.config.plugins;
-
         this.callParent(arguments);
     },
     
     destroy: function () {
         this.surface.remove();
-        this.histogramPane.remove();
+        if ( this.histogramPanel) { this.histogramPanel.remove();}  //This is optional
         this.callParent(arguments);
     },
     
     initComponent: function() {
     
         var me = this;
-        this.timeline = d3.select(this.parent.id);
-        this.leftEnd = this.minTickSpacing; //Bring in half a large circle size from the end so that we don't clip the first item
-        this.rightEnd = this.barLength-this.minTickSpacing; 
 
-        this.histogramPane = this.timeline.append("g")
-            .append('rect')
-            .attr('width', this.barLength)
-            .attr('height', 100)    //Histogram is always this size
+        //Just for debugging simplicity, let's work them all out here....
+
+        this.histogramBoxHeight = this.yAxisConfig.minTickSpacing * 10; //Fifteen pixels per tick. 10 ticks on the yAxis
+        this.histogramHeight = this.histogramBoxHeight - (this.yAxisConfig.topMargin + this.yAxisConfig.bottomMargin); //Fifteen pixels per tick. 10 ticks on the yAxis
+        this.histogramWidth = this.barLength - (this.xAxisConfig.leftMargin + this.xAxisConfig.rightMargin);
+        this.histogramTop =this.yAxisConfig.topMargin;
+        this.histogramLeft = this.xAxisConfig.leftMargin;
+        this.histogramBottom = this.histogramHeight;    //Currently it is the same offest from zero as the height.
+        this.leftEnd = 0; //The translate deals with any initial offsetting.
+        this.rightEnd = this.leftEnd + this.histogramWidth; 
+
+        //Let's start to add the components to the timeline area given to us
+        this.timeline = d3.select(this.parent.id);
+
+        this.histogramBox = this.timeline.append("g").attr('id', 'histogramGroup');
+        
+        //Put some background shading on the whole box
+        this.histogramBox.append('rect')
+            .attr('width', me.barLength)
+            .attr('height', me.histogramBoxHeight) 
             .attr('class', 'histogrambox');
 
-        this.surface = this.timeline.append('g')
-            .attr('transform', 'translate(0,' + 100 + ')');
+        //The panel needs to leave space in the box for the axes and labels
+        this.histogramPanel = this.histogramBox.append('g')
+            .attr('class', 'histogrampanel')
+            .attr('transform', 'translate(' + this.histogramLeft + ',' + this.histogramTop + ')')
+            .attr('height', this.histogramHeight - (this.histogramTop + this.yAxisConfig.bottomMargin));
 
-        //Background colouring
-        this.surface.append('rect')
-            .attr('width', this.barLength)
-            .attr('height', this.barWidth)
+        //Now make an area to hold the dots after the histogram
+        this.surfaceBox = this.timeline.append('g').attr('id', 'surfaceGroup')
+            .attr('transform', 'translate(0,' + this.histogramBoxHeight + ')');
+        
+        //Put some background shading on the whole box
+        this.surfaceBox.append('rect')
+            .attr('width', me.barLength)
+            .attr('height', me.barWidth)
             .attr('class', 'eventbox');
+
+
+        this.surface = this.surfaceBox.append('g')
+            .attr('class', 'surfacepanel')
+            .attr('height', me.barWidth)
+            .attr('transform', 'translate(' + this.histogramLeft + ',0)');
+
+
+//            .attr('height', this.histogramHeight - (this.histogramTop + this.yAxisConfig.bottomMargin));
+//          .attr('transform', 'translate(0,' + this.histogramBoxHeight + ')')
+//          .attr('transform', 'translate(' + this.histogramLeft + ',' + this.histogramBoxHeight + ')')
+//          .attr('width', this.histogramWidth);
+
 
         //TODO: Check whether we need a clipPath as the box is already a viewport
         this.defs = this.surface.append('defs')
@@ -63,8 +105,8 @@
             .append('rect')
             .attr('x', 0)
             .attr('y', 0)
-            .attr('width', this.barLength)
-            .attr('height', this.barWidth);
+            .attr('width', me.barLength)
+            .attr('height', me.barWidth);
 
         //Keep this global so we can access the current state of zoom
         this.zoom = d3.zoom();
@@ -77,22 +119,18 @@
         var maxDate = d3.max(this.data, function(d) { return d.timeStamp;});
         //Then set the initial scaling factor
         this.scale = d3.scaleTime()
-            .domain([ Ext.Date.add( minDate, me.tickType, -1), Ext.Date.add( maxDate, me.tickType, 1)])
+            .domain([ Ext.Date.clearTime(Ext.Date.add( minDate, me.tickType, -1)), Ext.Date.clearTime(Ext.Date.add( maxDate, me.tickType, 2))])
             .range([this.leftEnd, this.rightEnd]);
 
         this._setUpGeom(this.data);
 
-        this.histogram = d3.histogram()
-            .domain([ Ext.Date.add( minDate, me.tickType, -1), Ext.Date.add( maxDate, me.tickType, 1)])
-            .value( function(d) { return d.timeStamp;});
 
 
-        var bins = this.histogram(this.data);
         this.force = d3.forceSimulation(this.data)
             .force("x", d3.forceX(function(d) { 
                 return me.scale(d.timeStamp); 
             }).strength(0.1))
-            .force("y1", d3.forceY(this.barWidth/2).strength(0.1))
+            .force("y1", d3.forceY(me.barWidth/2).strength(0.1))
             .force("y3", d3.forceY(0).strength(-0.01))
             .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))    //Stop overlapping dots
             .stop();
@@ -108,11 +146,52 @@
                 .ticks(10, "%Y %b %d %I:%M");
             this.surface.append('g')
                 .attr('class', 'x axis')
-                .call(this.xAxis)
-                .call( function(x) { x.width = this.barWidth; x.length = this.barLength;});
+                .call(this.xAxis);
         }
 
-        //Add point
+        //Configure the histogram
+        this.histogram = d3.histogram()
+            .domain(this.scale.domain())
+            .value( function(d) { return d.timeStamp;})
+            .thresholds(this.scale.ticks(100));
+
+        var bins = this.histogram(this.data);
+        var vPos = d3.scaleLinear([me.histogramHeight,0])
+            .range([this.histogramHeight, 0]);
+        var vHeight = d3.scaleLinear([0,me.histogramHeight])
+            .range([ 0,this.histogramHeight]);
+        var maxBin = d3.max(bins, function(d) { return d.length; });
+        vPos.domain([0, maxBin]);
+        vHeight.domain([0, maxBin]);
+        this.histogramPanel.selectAll('.histogrambar')
+            .data(bins)
+            .enter()
+            .append('rect')
+            .attr('x', function(bin) { 
+                return me.scale(bin.x0) + 1;
+            })
+            .attr('y', function(bin) {return vPos(bin.length);})
+            .attr('height', function(bin) { 
+                return vHeight(bin.length);
+            })
+            .attr('width', function(bin) { 
+                var size = me.scale(bin.x1) - me.scale(bin.x0) - 1;
+                if (size < 0) { console.log( 'Zero sized bar', bin.x0, bin.x1);}
+                return size; 
+            })
+            .attr('class', 'histogrambar');
+
+        if (this.enableYAxis) {
+            this.hAxis = d3.axisLeft(vPos).ticks(maxBin);
+            //Add the left hand axis
+            this.histogramPanel
+                .append('g')
+                .attr('class', 'axis yAxis')
+                .call(me.hAxis);
+        }
+        
+        //Add points with lines to lower pane
+        //The start position is going to be rubber banded along with the dot (circle)
         this.surface.selectAll('.event')
             .data(this.data)
             .enter()
@@ -132,8 +211,7 @@
             .enter()
             .append("g");
 
-        //The position is going to be rubber banded to the baseline point
-            
+        //Add the circles to where the force calc moved the dots to. Done for clarity when viewing lots of dots together
         points.append('circle')
             .attr('cx', function(d) { return d.x;})
             .attr('cy', function(d) { return d.y;})
@@ -160,13 +238,13 @@
                 }
                 switch( d.markerType.subtype) {
                     case timelinemarker.TYPE.NORMAL:
-                        clsStr += '';
+                        clsStr += ' normal';
                         break;
                     case timelinemarker.TYPE.WARNING:
                         clsStr += ' warning';
                         break;
                     case timelinemarker.TYPE.ERROR:
-                        clsStr += ' warning';
+                        clsStr += ' error';
                         break;
                 }
                 return clsStr; 
@@ -182,10 +260,9 @@
     },
 
 
-    _mouseOut: function(node, item, me){
+    _mouseOut: function(node){
         if (node.card) { node.card.hide(); }
         var assocLine = d3.selectAll('line').filter( function(line) { return (line.index === node.index);});
-        //        assocLine.classed('line', true);
         assocLine.classed('highlightline', false);
 
     },
@@ -210,14 +287,11 @@
                     resizable: true,
                     listeners: {
                         show: function(card){
-                            
-                            //Move card to one side, preferably closer to the centre of the screen. TODO
-//                            debugger;
                             var xpos = node.x;
                             var ypos = node.y;
                             var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
                             card.el.setLeftTop( 
-                                (xpos - cardSize) < 0 ? xpos + (me.minTickSpacing*2) : ((xpos + cardSize) > outerLayout.width ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2)), 
+                                (xpos - cardSize) < 0 ? xpos + (cardSize/2) : ((xpos + cardSize) > outerLayout.width ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (cardSize/2)), 
                                 (ypos + card.getSize().height)> outerLayout.height ? ypos - (cardSize + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
                             );
                         }
