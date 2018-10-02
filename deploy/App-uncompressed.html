@@ -273,6 +273,7 @@ timelinemarker.TYPE = {
                 { field: 'Children', type: timelinemarker.TYPE.NORMAL },
                 { field: 'PlannedStartDate', type: timelinemarker.TYPE.NORMAL },    //Take note of the exception picked up in the code above!
                 { field: 'PlannedEndDate', type: timelinemarker.TYPE.NORMAL },
+                { field: 'PreliminaryEstimate', type: timelinemarker.TYPE.NORMAL },
             ];
     
             _.each(checkVar, function( check) {
@@ -320,6 +321,7 @@ timelinemarker.TYPE = {
             'PlannedEndDate',
             'PlannedStartDate',
             'Portfolio',
+            'PreliminaryEstimate',
             'Project', 
             'Ready', 
             'Release', 
@@ -330,18 +332,18 @@ timelinemarker.TYPE = {
             'TaskStatus',
             'TestCaseStatus'
         ];
+        
+        //LBAPI cannot rehydrate all that we want, e.g. _User
         var fieldsToHydrate = [
+            'Owner', 
+            '_PreviousValues.Owner', 
+            'Project', 
+            '_PreviousValues.Project', 
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
             'State', 
             '_PreviousValues.State', 
-            'Project', 
-            '_PreviousValues.Project', 
-            'Owner', 
-            '_PreviousValues.Owner', 
-            '_User',
             '_TypeHierarchy',
-            'FlowState'
             
         ];
         var neededFields = [
@@ -496,8 +498,8 @@ timelinemarker.TYPE = {
     },
     
     destroy: function () {
-        this.surface.remove();
-        if ( this.histogramPanel) { this.histogramPanel.remove();}  //This is optional
+        this.surfaceBox.remove();
+        if ( this.histogramBox) { this.histogramBox.remove();}  //This is optional
         this.callParent(arguments);
     },
     
@@ -745,12 +747,13 @@ timelinemarker.TYPE = {
                     resizable: true,
                     listeners: {
                         show: function(card){
-                            var xpos = node.x;
-                            var ypos = node.y;
+                            var coords = item.getScreenCTM();
+                            var xpos = node.x + coords.e;
+                            var ypos = node.y + coords.f;
                             var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
                             card.el.setLeftTop( 
-                                (xpos - cardSize) < 0 ? xpos + (cardSize/2) : ((xpos + cardSize) > outerLayout.width ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (cardSize/2)), 
-                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (cardSize + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
+                                (xpos > (outerLayout.width/2)) ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2),
+                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (card.getSize().height + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
                             );
                         }
                     }
@@ -767,8 +770,8 @@ timelinemarker.TYPE = {
     }, 
 
     _redrawTimeline: function() {
-        var me = this;
         if (this.enableXAxis) {
+        var me = this;
             var axis = this.surface.select('.x.axis');
             axis.call(this.xAxis);
         }

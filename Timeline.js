@@ -38,8 +38,8 @@
     },
     
     destroy: function () {
-        this.surface.remove();
-        if ( this.histogramPanel) { this.histogramPanel.remove();}  //This is optional
+        this.surfaceBox.remove();
+        if ( this.histogramBox) { this.histogramBox.remove();}  //This is optional
         this.callParent(arguments);
     },
     
@@ -287,12 +287,13 @@
                     resizable: true,
                     listeners: {
                         show: function(card){
-                            var xpos = node.x;
-                            var ypos = node.y;
+                            var coords = item.getScreenCTM();
+                            var xpos = node.x + coords.e;
+                            var ypos = node.y + coords.f;
                             var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
                             card.el.setLeftTop( 
-                                (xpos - cardSize) < 0 ? xpos + (cardSize/2) : ((xpos + cardSize) > outerLayout.width ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (cardSize/2)), 
-                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (cardSize + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
+                                (xpos > (outerLayout.width/2)) ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2),
+                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (card.getSize().height + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
                             );
                         }
                     }
@@ -309,8 +310,8 @@
     }, 
 
     _redrawTimeline: function() {
-        var me = this;
         if (this.enableXAxis) {
+        var me = this;
             var axis = this.surface.select('.x.axis');
             axis.call(this.xAxis);
         }

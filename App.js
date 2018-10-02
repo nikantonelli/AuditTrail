@@ -250,6 +250,7 @@ Ext.define('AuditApp', {
                 { field: 'Children', type: timelinemarker.TYPE.NORMAL },
                 { field: 'PlannedStartDate', type: timelinemarker.TYPE.NORMAL },    //Take note of the exception picked up in the code above!
                 { field: 'PlannedEndDate', type: timelinemarker.TYPE.NORMAL },
+                { field: 'PreliminaryEstimate', type: timelinemarker.TYPE.NORMAL },
             ];
     
             _.each(checkVar, function( check) {
@@ -297,6 +298,7 @@ Ext.define('AuditApp', {
             'PlannedEndDate',
             'PlannedStartDate',
             'Portfolio',
+            'PreliminaryEstimate',
             'Project', 
             'Ready', 
             'Release', 
@@ -307,18 +309,18 @@ Ext.define('AuditApp', {
             'TaskStatus',
             'TestCaseStatus'
         ];
+        
+        //LBAPI cannot rehydrate all that we want, e.g. _User
         var fieldsToHydrate = [
+            'Owner', 
+            '_PreviousValues.Owner', 
+            'Project', 
+            '_PreviousValues.Project', 
             'ScheduleState', 
             '_PreviousValues.ScheduleState', 
             'State', 
             '_PreviousValues.State', 
-            'Project', 
-            '_PreviousValues.Project', 
-            'Owner', 
-            '_PreviousValues.Owner', 
-            '_User',
             '_TypeHierarchy',
-            'FlowState'
             
         ];
         var neededFields = [
