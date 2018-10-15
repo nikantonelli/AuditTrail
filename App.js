@@ -114,6 +114,7 @@ Ext.define('AuditApp', {
         });
         //We had changes that don't continue beyond today, so it must have been deleted
         if ( deletedDate < new Date()) {
+            var duration = new Date(deletedRecord.get('_ValidTo')) - new Date(deletedRecord.get('_ValidFrom'));
             data.push( {
                 label: deletedRecord.get('FormattedID'),
                 markerType: timelinemarker.TYPE.ITEM_DELETION,
@@ -123,7 +124,7 @@ Ext.define('AuditApp', {
             });
         }
 
-        if (data.length >1) {
+        if (data.length >0) {
             me.timeline = Ext.create('timeline', {
                 parent: this.down('#svg'),
                 barWidth: 300,
@@ -182,6 +183,7 @@ Ext.define('AuditApp', {
                         break;
                     }
                 }
+                typeCode.subtype = typeCode.subtype? typeCode.subtype: timelinemarker.TYPE.NORMAL;  // Don't know what else to put here... error?
             }
         }
         return typeCode;
@@ -190,7 +192,9 @@ Ext.define('AuditApp', {
 
     _parseStory: function(record) {
         var checkVar = [
-            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },    //Might want to warn if changed whike Iteration is set
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },    //Might want to warn if changed while Iteration is set
+            { field: 'Release', type: timelinemarker.TYPE.WARNING },
+            { field: 'Iteration', type: timelinemarker.TYPE.WARNING },
         ];
         var retval = null;
 
@@ -209,11 +213,11 @@ Ext.define('AuditApp', {
 
     _parseCommon: function(record) {
         
+        //Here, we might want to check the app settings to see which ones are to be warnings and which are to be errors
+
         var checkVar = [
-            { field: 'DragAndDropRank', type: timelinemarker.TYPE.NORMAL },
-            { field: 'Owner', type: timelinemarker.TYPE.NORMAL },
             { field: 'Project', type: timelinemarker.TYPE.WARNING },
-            { field: 'Name', type: timelinemarker.TYPE.NORMAL },
+            { field: 'Name', type: timelinemarker.TYPE.WARNING },
         ];
         var retval = null;
 
@@ -230,7 +234,26 @@ Ext.define('AuditApp', {
     },
 
     _parseDefect: function(record) {
-        return timelinemarker.TYPE.UNKNOWN_EVENT;
+        var checkVar = [
+            { field: 'Priority', type: timelinemarker.TYPE.WARNING },   
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },  //Might want to warn if changed while Iteration is set
+            { field: 'TargetDate', type: timelinemarker.TYPE.WARNING },
+            { field: 'Release', type: timelinemarker.TYPE.WARNING },
+            { field: 'Iteration', type: timelinemarker.TYPE.WARNING },
+        ];
+        var retval = null;
+
+        _.each(checkVar, function( check) {
+            var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+            if ( lvar ){
+                if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
+                    retval = check.type;
+                }
+            }    
+        });
+
+        //Do other type specific checks here
+        return retval;
     },
 
     _parsePI: function(record) {
@@ -251,6 +274,7 @@ Ext.define('AuditApp', {
                 { field: 'PlannedStartDate', type: timelinemarker.TYPE.NORMAL },    //Take note of the exception picked up in the code above!
                 { field: 'PlannedEndDate', type: timelinemarker.TYPE.NORMAL },
                 { field: 'PreliminaryEstimate', type: timelinemarker.TYPE.NORMAL },
+                { field: 'UserStories', type: timelinemarker.TYPE.NORMAL },
             ];
     
             _.each(checkVar, function( check) {
@@ -294,34 +318,35 @@ Ext.define('AuditApp', {
             'Iteration', 
             'Name',
             'Owner',
+            'Parent',
             'PlanEstimate', 
             'PlannedEndDate',
             'PlannedStartDate',
-            'Portfolio',
-            'PreliminaryEstimate',
+            'PortfolioItem',
+            'PreliminaryEstimateValue', //Can't use PreliminaryEstimate or we would have to fetch the full object to get the real vlaue
             'Project', 
             'Ready', 
             'Release', 
+            'Risks',
             'ScheduleState', 
             'State', 
             'TaskEstimateTotal',
             'TaskEstimateRemaining',
+            'Tasks',
             'TaskStatus',
-            'TestCaseStatus'
+            'TestCases',
+            'TestCaseStatus',
+            'UserStories'
         ];
-        
+
         //LBAPI cannot rehydrate all that we want, e.g. _User
         var fieldsToHydrate = [
+            'Iteration',
             'Owner', 
-            '_PreviousValues.Owner', 
             'Project', 
-            '_PreviousValues.Project', 
+            'Release',
             'ScheduleState', 
-            '_PreviousValues.ScheduleState', 
             'State', 
-            '_PreviousValues.State', 
-            '_TypeHierarchy',
-            
         ];
         var neededFields = [
             '_ValidFrom', 
@@ -339,12 +364,18 @@ Ext.define('AuditApp', {
         //Add previous values fetches
         _.each(fieldsOfInterest, function (field) { neededFields.push('_PreviousValues.' + field);});
 
+        var hydrateFields = fieldsToHydrate;
+        _.each(fieldsToHydrate, function (field) { hydrateFields.push('_PreviousValues.' + field);});
+
+        //Add the needed one after adding previous
+        hydrateFields.push( '_TypeHierarchy' );
+
         var kb_store = Ext.create('Rally.data.lookback.SnapshotStore',{
             findConfig: find,
             compress: true,
             fetch: neededFields,
 //            fetch: true,
-            hydrate: fieldsToHydrate,
+            hydrate: hydrateFields,
             removeUnauthorizedSnapshots: true,
             limit: 'Infinity'
         });

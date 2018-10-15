@@ -137,6 +137,7 @@ timelinemarker.TYPE = {
         });
         //We had changes that don't continue beyond today, so it must have been deleted
         if ( deletedDate < new Date()) {
+            var duration = new Date(deletedRecord.get('_ValidTo')) - new Date(deletedRecord.get('_ValidFrom'));
             data.push( {
                 label: deletedRecord.get('FormattedID'),
                 markerType: timelinemarker.TYPE.ITEM_DELETION,
@@ -146,7 +147,7 @@ timelinemarker.TYPE = {
             });
         }
 
-        if (data.length >1) {
+        if (data.length >0) {
             me.timeline = Ext.create('timeline', {
                 parent: this.down('#svg'),
                 barWidth: 300,
@@ -205,6 +206,7 @@ timelinemarker.TYPE = {
                         break;
                     }
                 }
+                typeCode.subtype = typeCode.subtype? typeCode.subtype: timelinemarker.TYPE.NORMAL;  // Don't know what else to put here... error?
             }
         }
         return typeCode;
@@ -213,7 +215,9 @@ timelinemarker.TYPE = {
 
     _parseStory: function(record) {
         var checkVar = [
-            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },    //Might want to warn if changed whike Iteration is set
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },    //Might want to warn if changed while Iteration is set
+            { field: 'Release', type: timelinemarker.TYPE.WARNING },
+            { field: 'Iteration', type: timelinemarker.TYPE.WARNING },
         ];
         var retval = null;
 
@@ -232,11 +236,11 @@ timelinemarker.TYPE = {
 
     _parseCommon: function(record) {
         
+        //Here, we might want to check the app settings to see which ones are to be warnings and which are to be errors
+
         var checkVar = [
-            { field: 'DragAndDropRank', type: timelinemarker.TYPE.NORMAL },
-            { field: 'Owner', type: timelinemarker.TYPE.NORMAL },
             { field: 'Project', type: timelinemarker.TYPE.WARNING },
-            { field: 'Name', type: timelinemarker.TYPE.NORMAL },
+            { field: 'Name', type: timelinemarker.TYPE.WARNING },
         ];
         var retval = null;
 
@@ -253,7 +257,26 @@ timelinemarker.TYPE = {
     },
 
     _parseDefect: function(record) {
-        return timelinemarker.TYPE.UNKNOWN_EVENT;
+        var checkVar = [
+            { field: 'Priority', type: timelinemarker.TYPE.WARNING },   
+            { field: 'PlanEstimate', type: timelinemarker.TYPE.NORMAL },  //Might want to warn if changed while Iteration is set
+            { field: 'TargetDate', type: timelinemarker.TYPE.WARNING },
+            { field: 'Release', type: timelinemarker.TYPE.WARNING },
+            { field: 'Iteration', type: timelinemarker.TYPE.WARNING },
+        ];
+        var retval = null;
+
+        _.each(checkVar, function( check) {
+            var lvar = record.raw._PreviousValues && record.raw._PreviousValues.hasOwnProperty(check.field);
+            if ( lvar ){
+                if (record.raw._PreviousValues[check.field] !== record.get(check.field)){
+                    retval = check.type;
+                }
+            }    
+        });
+
+        //Do other type specific checks here
+        return retval;
     },
 
     _parsePI: function(record) {
@@ -274,6 +297,7 @@ timelinemarker.TYPE = {
                 { field: 'PlannedStartDate', type: timelinemarker.TYPE.NORMAL },    //Take note of the exception picked up in the code above!
                 { field: 'PlannedEndDate', type: timelinemarker.TYPE.NORMAL },
                 { field: 'PreliminaryEstimate', type: timelinemarker.TYPE.NORMAL },
+                { field: 'UserStories', type: timelinemarker.TYPE.NORMAL },
             ];
     
             _.each(checkVar, function( check) {
@@ -317,34 +341,35 @@ timelinemarker.TYPE = {
             'Iteration', 
             'Name',
             'Owner',
+            'Parent',
             'PlanEstimate', 
             'PlannedEndDate',
             'PlannedStartDate',
-            'Portfolio',
-            'PreliminaryEstimate',
+            'PortfolioItem',
+            'PreliminaryEstimateValue', //Can't use PreliminaryEstimate or we would have to fetch the full object to get the real vlaue
             'Project', 
             'Ready', 
             'Release', 
+            'Risks',
             'ScheduleState', 
             'State', 
             'TaskEstimateTotal',
             'TaskEstimateRemaining',
+            'Tasks',
             'TaskStatus',
-            'TestCaseStatus'
+            'TestCases',
+            'TestCaseStatus',
+            'UserStories'
         ];
-        
+
         //LBAPI cannot rehydrate all that we want, e.g. _User
         var fieldsToHydrate = [
+            'Iteration',
             'Owner', 
-            '_PreviousValues.Owner', 
             'Project', 
-            '_PreviousValues.Project', 
+            'Release',
             'ScheduleState', 
-            '_PreviousValues.ScheduleState', 
             'State', 
-            '_PreviousValues.State', 
-            '_TypeHierarchy',
-            
         ];
         var neededFields = [
             '_ValidFrom', 
@@ -362,12 +387,18 @@ timelinemarker.TYPE = {
         //Add previous values fetches
         _.each(fieldsOfInterest, function (field) { neededFields.push('_PreviousValues.' + field);});
 
+        var hydrateFields = fieldsToHydrate;
+        _.each(fieldsToHydrate, function (field) { hydrateFields.push('_PreviousValues.' + field);});
+
+        //Add the needed one after adding previous
+        hydrateFields.push( '_TypeHierarchy' );
+
         var kb_store = Ext.create('Rally.data.lookback.SnapshotStore',{
             findConfig: find,
             compress: true,
             fetch: neededFields,
 //            fetch: true,
-            hydrate: fieldsToHydrate,
+            hydrate: hydrateFields,
             removeUnauthorizedSnapshots: true,
             limit: 'Infinity'
         });
@@ -472,7 +503,7 @@ timelinemarker.TYPE = {
         barLength: 600,
         tickInterval: 50,   //For histogram bar width
         tickType: Ext.Date.DAY,
-        minTickSpacing: 10, //Fewest number of SVG pixels between ticks.  
+        dotSize: 5, //Fewest number of SVG pixels between ticks.  
         enableXAxis: true,     //Boolean as to whether to do the axes here  
         enableYAxis: true,
         xAxisConfig: 
@@ -559,14 +590,27 @@ timelinemarker.TYPE = {
 
 
         //TODO: Check whether we need a clipPath as the box is already a viewport
-        this.defs = this.surface.append('defs')
-            .append('clipPath')
+        this.defs = this.timeline.append('defs');
+        this.defs.append('clipPath')
             .attr('id', 'barContent')
             .append('rect')
             .attr('x', 0)
             .attr('y', 0)
             .attr('width', me.barLength)
             .attr('height', me.barWidth);
+
+        var grad = this.defs.append('radialGradient')
+            .attr('id', 'ok2warn')
+            .attr('gradientUnits','userSpaceOnUse')
+            .attr('cx', this.dotSize/2)
+            .attr('cy', this.dotSize/2)
+            .attr('r',this.dotSize);
+        grad.append('stop')
+            .attr('offset', '0%')
+            .attr('stop-color', 'green');
+        grad.append('stop')
+            .attr('offset', '100%')
+            .attr('stop-color', 'orange');
 
         //Keep this global so we can access the current state of zoom
         this.zoom = d3.zoom();
@@ -577,9 +621,16 @@ timelinemarker.TYPE = {
         //Get the max min for the initial range
         var minDate = d3.min(this.data, function(d) { return d.timeStamp;});
         var maxDate = d3.max(this.data, function(d) { return d.timeStamp;});
+
+        //Round down and up to a week boundary
+        var diffDay = Ext.Date.format(minDate, 'N');
+        minDate = Ext.Date.clearTime(Ext.Date.add(minDate, Ext.Date.DAY, -diffDay));
+        diffDay = Ext.Date.format(maxDate, 'N');
+        maxDate = Ext.Date.clearTime(Ext.Date.add(maxDate, Ext.Date.DAY, 7-diffDay));
+
         //Then set the initial scaling factor
         this.scale = d3.scaleTime()
-            .domain([ Ext.Date.clearTime(Ext.Date.add( minDate, me.tickType, -1)), Ext.Date.clearTime(Ext.Date.add( maxDate, me.tickType, 2))])
+            .domain([ minDate, maxDate])
             .range([this.leftEnd, this.rightEnd]);
 
         this._setUpGeom(this.data);
@@ -592,7 +643,7 @@ timelinemarker.TYPE = {
             }).strength(0.1))
             .force("y1", d3.forceY(me.barWidth/2).strength(0.1))
             .force("y3", d3.forceY(0).strength(-0.01))
-            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))    //Stop overlapping dots
+            .force("collide", d3.forceManyBody().strength(-me.dotSize*2))    //Stop overlapping dots
             .stop();
         
         //Do one now to set the initial positions
@@ -603,17 +654,29 @@ timelinemarker.TYPE = {
         //We may want the option of a zoomable area with no dates shown.
         if (this.enableXAxis) {
             this.xAxis = d3.axisBottom(this.scale)
-                .ticks(10, "%Y %b %d %I:%M");
+                .ticks(10, "%Y %b %d");
             this.surface.append('g')
                 .attr('class', 'x axis')
                 .call(this.xAxis);
         }
 
         //Configure the histogram
+
+        //From the date range, work out whether we want to do it per day or per week
+        var thresholds = [];
+        var dateStep = (24 * 60 * 60 * 1000);
+        if ((maxDate - minDate) > (100 * 24 * 60 * 60 * 1000)) {  //More than 100 days of data, use weeks
+            dateStep *= 7;
+        }
+        thresholds.push (Ext.Date.add(minDate, Ext.Date.MILLI, dateStep));
+        while (thresholds[thresholds.length-1] < maxDate) {
+            thresholds.push(Ext.Date.add(thresholds[thresholds.length-1],Ext.Date.MILLI, dateStep));
+        }
         this.histogram = d3.histogram()
             .domain(this.scale.domain())
             .value( function(d) { return d.timeStamp;})
-            .thresholds(this.scale.ticks(100));
+            .thresholds(thresholds);
+//            .thresholds(this.scale.ticks(100));
 
         var bins = this.histogram(this.data);
         var vPos = d3.scaleLinear([me.histogramHeight,0])
@@ -636,7 +699,7 @@ timelinemarker.TYPE = {
             })
             .attr('width', function(bin) { 
                 var size = me.scale(bin.x1) - me.scale(bin.x0) - 1;
-                if (size < 0) { console.log( 'Zero sized bar', bin.x0, bin.x1);}
+                if (size < 0) { console.log( 'Zero sized bar', bin.x0, bin.x1); size = 0;}
                 return size; 
             })
             .attr('class', 'histogrambar');
@@ -675,7 +738,7 @@ timelinemarker.TYPE = {
         points.append('circle')
             .attr('cx', function(d) { return d.x;})
             .attr('cy', function(d) { return d.y;})
-            .attr('r', this.minTickSpacing)
+            .attr('r', this.dotSize)
             .attr('id', function(d) { return 'point' + d.index;})
             .attr('class', function(d) {
                 var clsStr = 'elastic';
@@ -752,8 +815,8 @@ timelinemarker.TYPE = {
                             var ypos = node.y + coords.f;
                             var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
                             card.el.setLeftTop( 
-                                (xpos > (outerLayout.width/2)) ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2),
-                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (card.getSize().height + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
+                                (xpos > (outerLayout.width/2)) ? xpos - (cardSize + (me.dotSize*2)) : xpos + (me.dotSize*2),
+                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (card.getSize().height + (me.dotSize*2)) : ypos + (me.dotSize*2)
                             );
                         }
                     }
@@ -820,7 +883,7 @@ timelinemarker.TYPE = {
 
     _forceCalculate: function() {
         var me = this;
-        this.force.force("collide", d3.forceManyBody().strength(-this.minTickSpacing*2* ((this.rightEnd-this.leftEnd)/this.barLength)));    //Stop overlapping dots
+        this.force.force("collide", d3.forceManyBody().strength(-this.dotSize*2* ((this.rightEnd-this.leftEnd)/this.barLength)));    //Stop overlapping dots
         for (var i = 0; i <150; i++) { this.force.tick();}
         _.each(this.data, function(datum) {
             datum.dotTime = me.scale.invert(datum.x);
@@ -18753,7 +18816,7 @@ Ext.define('AuditCard', {
     defaultConfig: {
         showReadyIcon: true,
         showBlockedIcon: true,
-        width: 800,
+        width: 400,
     },
 
     constructor: function(config) {
@@ -18773,9 +18836,144 @@ Ext.define('AuditCard', {
         return '<td>' + Ext.create('Rally.ui.renderer.template.CardOwnerImageTemplate', {}).apply(data) + '</td>';
     },
 
-    _getChangeHtml: function() {
-        var me = this;
+    //Each change is in a table row of three columns
+    _getChangeHtml: function ( record, key) {
+
         var html = '';
+        //LBAPI does not store the full field info, so we can't find out what sort of field it is.
+        //This means that we have to decode each one based on the name. Crap or what!
+
+        var oname = record.raw._PreviousValues[key];
+        var nname = record.raw[key];
+        
+        switch (key) {
+            case 'UserStories' : {
+                //We need to fetch the state of the UserStories at this particular date and add them to a list
+                //If list of userstories is longer, get the new list. If it is shorter, get the _PreviousValues list
+                //I believe LBAPI will record one add/remove per snapshot. I will accomodate more in the code just in case
+                var added = [];
+                var taken = [];
+
+                if (oname) { 
+                    (oname.length > nname.length) ? taken = _.difference(oname,nname) : added = _.difference(nname,oname); 
+                    if (added.length) {
+                        html += '<tr><td class="cardleftcol">' + 'Added User Story: ' + _.each(added, function(add) { return '<tr>' + add + '</tr>';});
+                        html += '</td></tr>';
+                    }
+                    if (taken.length) {
+                        html += '<tr><td class="cardleftcol">' + 'Removed User Story: ' + _.each(taken, function(subt) { return '<tr>' + subt + '</tr>';});
+                        html += '</td></tr>';
+                    }
+                }
+                else {
+                    html += '<tr><td class="cardleftcol">' + 'Added User Story: ' + _.each(nname, function(add) { return '<tr>' + add + '</tr>';});
+                }
+                break;
+            }
+            case 'PlannedEndDate' : 
+            case 'PlannedStartDate' :  {
+                if ((nname === null) || (nname === '')) { nname = '1/1/9999';}
+
+                html += '<tr><td class="cardleftcol">' + key;
+                if ( oname === null) {
+                    html += ' set to ' + Ext.Date.format(new Date(nname), 'd M Y');
+                }
+                else {
+                    html += ' changed from ' + Ext.Date.format(new Date(oname), 'd M Y') + ' to ' + Ext.Date.format(new Date(nname), 'd M Y');
+                }
+                html += '</td></tr>';
+                break;
+            }
+            case 'PlanEstimate' : 
+            case 'PreliminaryEstimateValue':
+            case 'TestCaseStatus': 
+            case 'TaskStatus':
+            case 'TaskEstimateTotal': 
+            case 'DefectStatus': 
+            case 'ScheduleState' :
+            case 'State': {
+                if ((nname === null) || (nname === '')) { nname = 'Unknown';}
+
+                html += '<tr><td class="cardleftcol">' + key;
+                if ( oname === null) {
+                    html += ' set to ' + nname;
+                }
+                else {
+                    html += ' changed from ' + oname + ' to ' + nname;
+                }
+                html += '</td></tr>';
+                break;
+            }
+            case 'Name': {
+                if (!nname) { nname = 'Unknown';}
+
+                html += '<tr><td class="cardleftcol">' + key;
+                if ( oname === null) {
+                    html += ' set to "' + nname + '"';
+                }
+                else {
+                    html += ' changed from "' + oname + '" to "' + nname + '"';
+                }
+                html += '</td></tr>';
+                break;
+            }
+
+            case "DragAndDropRank":{
+                if (!oname) { oname = '';}
+                if (!nname) { nname = '';}        
+                html += '<tr><td class="cardleftcol">' + key;
+                if ( oname.length) {
+                    if ( nname > oname ) {
+                        html += ' moved up';
+                    }
+                    else {
+                        html += ' moved down';
+                    }
+                }
+                else {
+                    html += ' set';
+                }
+                html += '</td></tr>';
+                break;
+            }
+            case 'Expedite':
+            case 'Ready': 
+            case 'Blocked' : {
+                html += '<tr><td class="cardleftcol">' + key;
+                if ( oname === null) {
+                    html += ' set to ' + (nname ? 'true':'false');
+                }
+                else {
+                    html += ' changed to ' + (nname ? 'true':'false');
+                }
+                html += '</td></tr>';
+                break;
+                
+            }
+            case 'Release':
+            case 'Iteration':
+            case 'Project':
+                html += '<tr><td class="cardleftcol">' + key;
+                if ( (oname === null) || (!oname.Name)) {
+                    html += ' set to ' + nname.Name;
+                }
+                else {
+                    html += ' moved from ' + oname.Name + ' to ' + nname.Name;
+                }
+                html += '</td></tr>';
+                break;
+
+            default: {
+                console.log( key, record);
+                break;
+            }
+        }
+        return html;
+    },
+
+    _getHtml: function() {
+        var me = this;
+        var html = '<div><table style="width:' + this.width + 'px" class="card-table">';
 
         /* TODO: What conditions can the lookback api create:
             1. item creation
@@ -18786,30 +18984,14 @@ Ext.define('AuditCard', {
         if ( this.record.raw._PreviousValues ) {
             var k = Object.keys(this.record.raw._PreviousValues);
 
-            if (k.length > 0) {
-                html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>';
-            }
-            _.each(k, function(key) {
-                
-                //If the hydrate has given us an object, we needs its name
-                var oname = me.record.raw._PreviousValues[key];
-                var nname = me.record.raw[key];
-                if (oname && oname.hasOwnProperty('Name')) { oname = oname.Name;}
-                if (nname && nname.hasOwnProperty('Name')) { nname = nname.Name;}
-
-                if (!oname) { oname = '';}
-                if (!nname) { nname = '';}
-
-                html += '<td class="cardleftcol">' + key + '</td>';
-                html += '<td class="cardmiddlecol">' + oname + '</td>';
-                html += '<td class="cardrightcol">' + nname + '</td>';
-                html += '</tr><tr>';
+            // if (k.length > 0) {
+            //     html += '<tr><th class="cardlefthdr">Field</th>' + '<th class="cardmiddlehdr">Before</th>' + '<th class="cardrighthdr">After</th></tr>';
+            // }
+            _.each(k, function(key) {                
+                html += me._getChangeHtml(me.record, key);
             });
         }
-        else {
-            //TODO Columns without previousvalues
-        }
-        return html + '</tr><tr>';
+        return html + '</table></div>';
     },
 
     _buildHtml: function () {
@@ -18831,11 +19013,8 @@ Ext.define('AuditCard', {
         html.push(this._getUserHtml());
         html.push('<td>' + this.record.raw['FormattedID'] + '</td><td>' + 
             Ext.Date.format(new Date(this.record.raw['_ValidFrom']), 'Y-M-d H:i') + '</td>');
-        html.push('</tr><tr>');
-        html.push(this._getChangeHtml());
-
         html.push('</tr></table>');
-
+        html.push(this._getHtml());
         html.push('</div>');
 
         return html.join('\n');
@@ -18924,13 +19103,13 @@ Ext.define('AuditCard', {
   fill: purple;
 }
 .change {
-  fill: green;
+  fill: #63c59f;
 }
 .unknown {
   fill: black;
 }
 .creation {
-  fill: yellow;
+  fill: #54a9c4;
 }
 .mouse:pseudo-class {
   enableCard: true;
@@ -18950,23 +19129,23 @@ Ext.define('AuditCard', {
   stroke-width: 3;
 }
 .normal {
-  stroke: green;
-  stroke-width: 3;
+  stroke: #63c59f;
+  stroke-width: 2;
 }
 .cardleftcol {
   border: 1px grey;
   border-style: none solid none none;
-  text-align: center;
+  text-align: left;
 }
 .cardmiddlecol {
   border: 1px grey;
-  border-style: none solid none solid;
+  border-style: none solid none none;
   text-align: center;
 }
 .cardrightcol {
   border: 1px grey;
-  border-style: none none none solid;
-  text-align: center;
+  border-style: none none none none;
+  text-align: right;
 }
 .cardlefthdr {
   border: 1px grey;

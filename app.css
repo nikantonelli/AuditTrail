@@ -48,7 +48,7 @@
 }
 
 .change {
-    fill: green;
+    fill: rgb(99, 197, 159);
 }
 
 .unknown {
@@ -56,7 +56,7 @@
 }
 
 .creation {
-    fill: yellow;
+    fill: #54a9c4;
 }
 .mouse:pseudo-class {
     enableCard: true
@@ -80,24 +80,24 @@
 }
 
 .normal {
-    stroke: green;
-    stroke-width: 3;
+    stroke: rgb(99, 197, 159);
+    stroke-width: 2;
 }
 
 .cardleftcol {
     border: 1px grey;
     border-style: none solid none none;
-    text-align: center;
+    text-align: left;
 }
 .cardmiddlecol {
     border: 1px grey;
-    border-style: none solid none solid;
+    border-style: none solid none none;
     text-align: center;
 }
 .cardrightcol {
     border: 1px grey;
-    border-style: none none none solid;
-    text-align: center;
+    border-style: none none none none;
+    text-align: right;
 }
 .cardlefthdr {
     border: 1px grey;

@@ -12,7 +12,7 @@
         barLength: 600,
         tickInterval: 50,   //For histogram bar width
         tickType: Ext.Date.DAY,
-        minTickSpacing: 10, //Fewest number of SVG pixels between ticks.  
+        dotSize: 5, //Fewest number of SVG pixels between ticks.  
         enableXAxis: true,     //Boolean as to whether to do the axes here  
         enableYAxis: true,
         xAxisConfig: 
@@ -99,14 +99,27 @@
 
 
         //TODO: Check whether we need a clipPath as the box is already a viewport
-        this.defs = this.surface.append('defs')
-            .append('clipPath')
+        this.defs = this.timeline.append('defs');
+        this.defs.append('clipPath')
             .attr('id', 'barContent')
             .append('rect')
             .attr('x', 0)
             .attr('y', 0)
             .attr('width', me.barLength)
             .attr('height', me.barWidth);
+
+        var grad = this.defs.append('radialGradient')
+            .attr('id', 'ok2warn')
+            .attr('gradientUnits','userSpaceOnUse')
+            .attr('cx', this.dotSize/2)
+            .attr('cy', this.dotSize/2)
+            .attr('r',this.dotSize);
+        grad.append('stop')
+            .attr('offset', '0%')
+            .attr('stop-color', 'green');
+        grad.append('stop')
+            .attr('offset', '100%')
+            .attr('stop-color', 'orange');
 
         //Keep this global so we can access the current state of zoom
         this.zoom = d3.zoom();
@@ -117,9 +130,16 @@
         //Get the max min for the initial range
         var minDate = d3.min(this.data, function(d) { return d.timeStamp;});
         var maxDate = d3.max(this.data, function(d) { return d.timeStamp;});
+
+        //Round down and up to a week boundary
+        var diffDay = Ext.Date.format(minDate, 'N');
+        minDate = Ext.Date.clearTime(Ext.Date.add(minDate, Ext.Date.DAY, -diffDay));
+        diffDay = Ext.Date.format(maxDate, 'N');
+        maxDate = Ext.Date.clearTime(Ext.Date.add(maxDate, Ext.Date.DAY, 7-diffDay));
+
         //Then set the initial scaling factor
         this.scale = d3.scaleTime()
-            .domain([ Ext.Date.clearTime(Ext.Date.add( minDate, me.tickType, -1)), Ext.Date.clearTime(Ext.Date.add( maxDate, me.tickType, 2))])
+            .domain([ minDate, maxDate])
             .range([this.leftEnd, this.rightEnd]);
 
         this._setUpGeom(this.data);
@@ -132,7 +152,7 @@
             }).strength(0.1))
             .force("y1", d3.forceY(me.barWidth/2).strength(0.1))
             .force("y3", d3.forceY(0).strength(-0.01))
-            .force("collide", d3.forceManyBody().strength(-me.minTickSpacing*2))    //Stop overlapping dots
+            .force("collide", d3.forceManyBody().strength(-me.dotSize*2))    //Stop overlapping dots
             .stop();
         
         //Do one now to set the initial positions
@@ -143,17 +163,29 @@
         //We may want the option of a zoomable area with no dates shown.
         if (this.enableXAxis) {
             this.xAxis = d3.axisBottom(this.scale)
-                .ticks(10, "%Y %b %d %I:%M");
+                .ticks(10, "%Y %b %d");
             this.surface.append('g')
                 .attr('class', 'x axis')
                 .call(this.xAxis);
         }
 
         //Configure the histogram
+
+        //From the date range, work out whether we want to do it per day or per week
+        var thresholds = [];
+        var dateStep = (24 * 60 * 60 * 1000);
+        if ((maxDate - minDate) > (100 * 24 * 60 * 60 * 1000)) {  //More than 100 days of data, use weeks
+            dateStep *= 7;
+        }
+        thresholds.push (Ext.Date.add(minDate, Ext.Date.MILLI, dateStep));
+        while (thresholds[thresholds.length-1] < maxDate) {
+            thresholds.push(Ext.Date.add(thresholds[thresholds.length-1],Ext.Date.MILLI, dateStep));
+        }
         this.histogram = d3.histogram()
             .domain(this.scale.domain())
             .value( function(d) { return d.timeStamp;})
-            .thresholds(this.scale.ticks(100));
+            .thresholds(thresholds);
+//            .thresholds(this.scale.ticks(100));
 
         var bins = this.histogram(this.data);
         var vPos = d3.scaleLinear([me.histogramHeight,0])
@@ -176,7 +208,7 @@
             })
             .attr('width', function(bin) { 
                 var size = me.scale(bin.x1) - me.scale(bin.x0) - 1;
-                if (size < 0) { console.log( 'Zero sized bar', bin.x0, bin.x1);}
+                if (size < 0) { console.log( 'Zero sized bar', bin.x0, bin.x1); size = 0;}
                 return size; 
             })
             .attr('class', 'histogrambar');
@@ -215,7 +247,7 @@
         points.append('circle')
             .attr('cx', function(d) { return d.x;})
             .attr('cy', function(d) { return d.y;})
-            .attr('r', this.minTickSpacing)
+            .attr('r', this.dotSize)
             .attr('id', function(d) { return 'point' + d.index;})
             .attr('class', function(d) {
                 var clsStr = 'elastic';
@@ -292,8 +324,8 @@
                             var ypos = node.y + coords.f;
                             var outerLayout = this.getEl().dom.offsetParent.getBoundingClientRect();
                             card.el.setLeftTop( 
-                                (xpos > (outerLayout.width/2)) ? xpos - (cardSize + (me.minTickSpacing*2)) : xpos + (me.minTickSpacing*2),
-                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (card.getSize().height + (me.minTickSpacing*2)) : ypos + (me.minTickSpacing*2)
+                                (xpos > (outerLayout.width/2)) ? xpos - (cardSize + (me.dotSize*2)) : xpos + (me.dotSize*2),
+                                (ypos + card.getSize().height)> outerLayout.height ? ypos - (card.getSize().height + (me.dotSize*2)) : ypos + (me.dotSize*2)
                             );
                         }
                     }
@@ -360,7 +392,7 @@
 
     _forceCalculate: function() {
         var me = this;
-        this.force.force("collide", d3.forceManyBody().strength(-this.minTickSpacing*2* ((this.rightEnd-this.leftEnd)/this.barLength)));    //Stop overlapping dots
+        this.force.force("collide", d3.forceManyBody().strength(-this.dotSize*2* ((this.rightEnd-this.leftEnd)/this.barLength)));    //Stop overlapping dots
         for (var i = 0; i <150; i++) { this.force.tick();}
         _.each(this.data, function(datum) {
             datum.dotTime = me.scale.invert(datum.x);
