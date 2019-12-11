@@ -1,7 +1,7 @@
 AuditTrail
 =========================
 
-![alt text]https://github.com/nikantonelli/AuditTrail/blob/master/Images/overview.png
+![alt text](https://github.com/nikantonelli/AuditTrail/blob/master/Images/overview.png)
 
 
 ## License
